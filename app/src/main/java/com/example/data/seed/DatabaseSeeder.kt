@@ -49,11 +49,11 @@ object DatabaseSeeder {
             )
             db.walletDao().insertWallet(
                 WalletEntity(
-                    id = "wallet-hawalaty",
-                    code = "HAWALATY",
-                    name = "حوالتي",
+                    id = "wallet-jawali",
+                    code = "JAWALI",
+                    name = "جوالي",
                     enabled = true,
-                    iconName = "currency_exchange"
+                    iconName = "phone_android"
                 )
             )
         }
