@@ -172,6 +172,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun authenticate(userId: String, rawPin: String) {
+        if (rawPin.length !in 4..6 || !rawPin.all(Char::isDigit)) {
+            loginErrorMessage.value = "رمز PIN يجب أن يكون من 4 إلى 6 أرقام"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val user = db.userDao().getUserById(userId)
             if (user == null || !user.isActive) {
