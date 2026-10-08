@@ -64,3 +64,15 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         db.execSQL("ALTER TABLE users_v2 RENAME TO users")
     }
 }
+
+
+/**
+ * Version 3 currently contains no schema changes relative to version 2.
+ * Keep this explicit migration so existing version-2 databases can upgrade
+ * without destructive migration.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Intentionally empty: schema is unchanged between v2 and v3.
+    }
+}
