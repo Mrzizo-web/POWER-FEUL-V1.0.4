@@ -232,10 +232,9 @@ class GatewayServer(
         return match.groupValues[1]
             .replace("\\n", "\n")
             .replace("\\r", "\r")
-            .replace("\\"", """)
+            .replace("\\\"", "\"")
             .replace("\\\\", "\\")
     }
-
     private fun extractJsonLong(json: String, key: String): Long? {
         val pattern = Regex(""""$key"\s*:\s*(-?\d+)""")
         return pattern.find(json)?.groupValues?.getOrNull(1)?.toLongOrNull()
