@@ -437,6 +437,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addEmployee(name: String, username: String, pin: String, role: UserRole, phone: String) {
         val user = _currentUser.value ?: return
+        if (pin.length !in 4..6 || !pin.all(Char::isDigit)) {
+            snackbarMessage.value = "رمز PIN يجب أن يكون من 4 إلى 6 أرقام"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val hash = passwordHasher.hash(pin)
             val emp = UserEntity(
@@ -469,6 +473,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeUserPin(userId: String, currentPin: String, newPin: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
         val user = _currentUser.value ?: return
+        if (newPin.length !in 4..6 || !newPin.all(Char::isDigit)) {
+            onResult(false, "رمز PIN الجديد يجب أن يكون من 4 إلى 6 أرقام")
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val target = db.userDao().getUserById(userId)
             if (target == null) {
