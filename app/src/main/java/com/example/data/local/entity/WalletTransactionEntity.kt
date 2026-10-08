@@ -8,7 +8,7 @@ import java.util.UUID
 @Entity(tableName = "wallet_transactions")
 data class WalletTransactionEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
-    val walletCode: String, // JEEB, FLOOSAK, HAWALATY
+    val walletCode: String, // JEEB, FLOOSAK, JAWALI
     val amount: Double,
     val transactionId: String,
     val sender: String,
