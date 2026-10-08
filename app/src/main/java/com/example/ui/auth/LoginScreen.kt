@@ -133,7 +133,7 @@ fun LoginScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    for (i in 0 until 9) { // max 9 digits
+                    for (i in 0 until 6) { // PIN max 6 digits
                         val isFilled = i < enteredPin.length
                         Box(
                             modifier = Modifier
@@ -203,7 +203,7 @@ fun LoginScreen(
                                     else -> {
                                         Button(
                                             onClick = {
-                                                if (enteredPin.length < 12) {
+                                                if (enteredPin.length < 6) {
                                                     enteredPin += key
                                                     onClearError()
                                                 }
@@ -229,11 +229,11 @@ fun LoginScreen(
                 Button(
                     onClick = {
                         val user = selectedUser
-                        if (user != null && enteredPin.isNotEmpty()) {
+                        if (user != null && enteredPin.length in 4..6) {
                             onAuthenticate(user.id, enteredPin)
                         }
                     },
-                    enabled = selectedUser != null && enteredPin.isNotEmpty(),
+                    enabled = selectedUser != null && enteredPin.length in 4..6,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
