@@ -31,18 +31,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val backupRestoreEngine = BackupRestoreEngine(application, db)
     val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope)
 
-    init {
-        // Real periodic enforcement: the session remains locked until explicit unlock.
-        viewModelScope.launch {
-            while (true) {
-                if (_currentUser.value != null) {
-                    sessionManager.checkTimeout()
-                }
-                delay(15_000L)
-            }
-        }
-    }
-
     private var gatewayServer: com.example.gateway.GatewayServer? = null
     val isGatewayRunning = MutableStateFlow(false)
     val gatewayPort = MutableStateFlow(8080)
@@ -58,6 +46,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
+
+    init {
+        // Real periodic enforcement: the session remains locked until explicit unlock.
+        viewModelScope.launch {
+            while (true) {
+                if (_currentUser.value != null) {
+                    sessionManager.checkTimeout()
+                }
+                delay(15_000L)
+            }
+        }
+    }
+
     val currentUser: StateFlow<UserEntity?> = _currentUser.asStateFlow()
 
     private val _activeScreen = MutableStateFlow(AppScreen.LOGIN)
