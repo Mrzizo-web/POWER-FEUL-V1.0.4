@@ -9,6 +9,7 @@ import com.example.data.local.entity.*
 import com.example.domain.model.*
 import com.example.security.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,6 +30,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val walletMatchingEngine = WalletMatchingEngine(db)
     val backupRestoreEngine = BackupRestoreEngine(application, db)
     val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope)
+
+    init {
+        // Real periodic enforcement: the session remains locked until explicit unlock.
+        viewModelScope.launch {
+            while (true) {
+                if (_currentUser.value != null) {
+                    sessionManager.checkTimeout()
+                }
+                delay(15_000L)
+            }
+        }
+    }
 
     private var gatewayServer: com.example.gateway.GatewayServer? = null
     val isGatewayRunning = MutableStateFlow(false)
