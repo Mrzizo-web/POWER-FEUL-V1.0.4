@@ -1,5 +1,6 @@
 package com.example.data.engine
 
+import androidx.room.withTransaction
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.AuditLogEntity
 import com.example.data.local.entity.WalletSmsEntity
@@ -40,26 +41,30 @@ class WalletMatchingEngine(private val db: AppDatabase) {
             return IngestResult.Unmatched(sms)
         }
 
-        // 1. Check for primary duplicate by (walletCode + transactionId) if txId is present
-        var existingTx: WalletTransactionEntity? = null
-        if (parsed.transactionId.isNotBlank()) {
-            existingTx = walletDao.findTransactionByTxId(parsed.walletCode, parsed.transactionId)
+        // Jaib outgoing SMS is never converted into an incoming POS transfer.
+        if (parsed.direction == WalletDirection.OUTGOING) {
+            val sms = WalletSmsEntity(
+                id = smsId,
+                walletCode = parsed.walletCode,
+                receivedAt = receivedAt,
+                sender = sender,
+                body = body,
+                parsedAmount = parsed.amount,
+                parsedTransactionId = parsed.transactionId,
+                parsedSender = parsed.sender,
+                processingStatus = SmsProcessingStatus.UNMATCHED
+            )
+            walletDao.insertSms(sms)
+            return IngestResult.Unmatched(sms)
         }
 
-        // 2. Check for potential duplicate by amount + sender + 10-minute time window
-        if (existingTx == null && parsed.sender.isNotBlank()) {
-            val window = 10 * 60 * 1000L
-            existingTx = walletDao.findPotentialDuplicate(
-                walletCode = parsed.walletCode,
-                amount = parsed.amount,
-                sender = parsed.sender,
-                minTime = receivedAt - window,
-                maxTime = receivedAt + window
-            )
-        }
+        // Only a real transaction/reference ID is a financial duplicate key.
+        // Never use amount + sender + time as a duplicate key.
+        val existingTx = parsed.transactionId
+            .takeIf { it.isNotBlank() }
+            ?.let { walletDao.findTransactionByTxId(parsed.walletCode, it) }
 
         if (existingTx != null) {
-            // Duplicate detected! Save SMS, link to existing transaction, but DO NOT create new financial transaction
             val sms = WalletSmsEntity(
                 id = smsId,
                 walletCode = parsed.walletCode,
@@ -72,45 +77,47 @@ class WalletMatchingEngine(private val db: AppDatabase) {
                 processingStatus = SmsProcessingStatus.DUPLICATE,
                 matchedTransactionId = existingTx.id
             )
-            walletDao.insertSms(sms)
-
-            auditLogDao.insertLog(
-                AuditLogEntity(
-                    userId = "SYSTEM",
-                    userName = "SMS Gateway",
-                    userRole = "SYSTEM",
-                    action = "DUPLICATE_SMS_DETECTED",
-                    entityType = "WALLET_TX",
-                    entityId = existingTx.id,
-                    newValue = "${parsed.amount} ريال (${parsed.transactionId})",
-                    notes = "تم تجاهل التكرار وربط الرسالة بالحوالة السابقة"
+            db.withTransaction {
+                walletDao.insertSms(sms)
+                auditLogDao.insertLog(
+                    AuditLogEntity(
+                        userId = "SYSTEM",
+                        userName = "SMS Gateway",
+                        userRole = "SYSTEM",
+                        action = "DUPLICATE_SMS_DETECTED",
+                        entityType = "WALLET_TX",
+                        entityId = existingTx.id,
+                        newValue = "\${parsed.amount} ريال (\${parsed.transactionId})",
+                        notes = "تم اكتشاف التكرار بواسطة رقم المرجع/المعاملة"
+                    )
                 )
-            )
-
-            return IngestResult.Duplicate(existingTx, "رسالة مكررة لنفس الحوالة رقم ${existingTx.transactionId}")
+            }
+            return IngestResult.Duplicate(existingTx, "رسالة مكررة لنفس رقم المرجع \${existingTx.transactionId}")
         }
 
-        // 3. Find open shift AT THE EXACT TIME OF RECEIPT (receivedAt)
-        // In local room, check if open shift exists
-        val openShift = shiftDao.getCurrentOpenShiftSync()
-        val isOutOfShift = (openShift == null)
+        // Critical: resolve the shift from the SMS arrival time, not processing time.
+        val shift = shiftDao.getShiftContainingTime(receivedAt)
+        val isOutOfShift = shift == null
 
-        val txId = UUID.randomUUID().toString()
+        // Do not invent a transaction/reference number when the real SMS has none.
         val tx = WalletTransactionEntity(
-            id = txId,
+            id = UUID.randomUUID().toString(),
             walletCode = parsed.walletCode,
             amount = parsed.amount,
-            transactionId = parsed.transactionId.ifEmpty { "TX-${System.currentTimeMillis() % 100000}" },
+            transactionId = parsed.transactionId,
             sender = parsed.sender.ifEmpty { sender },
             receivedAt = receivedAt,
-            shiftId = openShift?.id,
-            cashierId = openShift?.userId,
-            cashierName = openShift?.userName,
+            shiftId = shift?.id,
+            cashierId = shift?.userId,
+            cashierName = shift?.userName,
             status = if (isOutOfShift) WalletTransferStatus.OUT_OF_SHIFT else WalletTransferStatus.MATCHED,
             originalSmsId = smsId,
-            notes = if (isOutOfShift) "وصلت خارج الدوام" else "مرتبطة بشفت ${openShift?.userName}"
+            notes = if (isOutOfShift) {
+                "وصلت خارج نطاق أي شفت بحسب receivedAt"
+            } else {
+                "مرتبطة بالشفت \${shift.userName} بحسب receivedAt"
+            }
         )
-        walletDao.insertTransaction(tx)
 
         val sms = WalletSmsEntity(
             id = smsId,
@@ -122,22 +129,29 @@ class WalletMatchingEngine(private val db: AppDatabase) {
             parsedTransactionId = parsed.transactionId,
             parsedSender = parsed.sender,
             processingStatus = SmsProcessingStatus.PROCESSED,
-            matchedTransactionId = txId
+            matchedTransactionId = tx.id
         )
-        walletDao.insertSms(sms)
 
-        auditLogDao.insertLog(
-            AuditLogEntity(
-                userId = "SYSTEM",
-                userName = "SMS Gateway",
-                userRole = "SYSTEM",
-                action = if (isOutOfShift) "WALLET_TX_OUT_OF_SHIFT" else "WALLET_TX_RECEIVED",
-                entityType = "WALLET_TX",
-                entityId = txId,
-                newValue = "${tx.amount} ريال (${tx.walletCode})",
-                notes = if (isOutOfShift) "حوالة واردة بدون شفت مفتوح" else "حوالة واردة لشفت ${openShift?.userName}"
+        db.withTransaction {
+            walletDao.insertTransaction(tx)
+            walletDao.insertSms(sms)
+            auditLogDao.insertLog(
+                AuditLogEntity(
+                    userId = "SYSTEM",
+                    userName = "SMS Gateway",
+                    userRole = "SYSTEM",
+                    action = if (isOutOfShift) "WALLET_TX_OUT_OF_SHIFT" else "WALLET_TX_RECEIVED",
+                    entityType = "WALLET_TX",
+                    entityId = tx.id,
+                    newValue = "\${tx.amount} ريال (\${tx.walletCode})",
+                    notes = if (isOutOfShift) {
+                        "حوالة واردة بدون شفت يحتوي receivedAt"
+                    } else {
+                        "حوالة واردة مرتبطة بشفت \${shift?.userName} حسب receivedAt"
+                    }
+                )
             )
-        )
+        }
 
         return IngestResult.Created(tx, isOutOfShift)
     }
@@ -157,21 +171,22 @@ class WalletMatchingEngine(private val db: AppDatabase) {
             rejectionReason = if (newStatus == WalletTransferStatus.REJECTED) reason else tx.rejectionReason,
             updatedAt = System.currentTimeMillis()
         )
-        walletDao.updateTransaction(updated)
-
-        auditLogDao.insertLog(
-            AuditLogEntity(
-                userId = userId,
-                userName = userName,
-                userRole = userRole,
-                action = "UPDATE_WALLET_TX_STATUS",
-                entityType = "WALLET_TX",
-                entityId = txId,
-                previousValue = prev.name,
-                newValue = newStatus.name,
-                notes = reason.ifEmpty { "تعديل حالة الحوالة إلى ${newStatus.titleAr}" }
+        db.withTransaction {
+            walletDao.updateTransaction(updated)
+            auditLogDao.insertLog(
+                AuditLogEntity(
+                    userId = userId,
+                    userName = userName,
+                    userRole = userRole,
+                    action = "UPDATE_WALLET_TX_STATUS",
+                    entityType = "WALLET_TX",
+                    entityId = txId,
+                    previousValue = prev.name,
+                    newValue = newStatus.name,
+                    notes = reason.ifEmpty { "تعديل حالة الحوالة إلى \${newStatus.titleAr}" }
+                )
             )
-        )
+        }
         return Result.success(updated)
     }
 
@@ -195,21 +210,22 @@ class WalletMatchingEngine(private val db: AppDatabase) {
             notes = "تمت إعادة الربط بالشفت بواسطة $userName: $reason",
             updatedAt = System.currentTimeMillis()
         )
-        walletDao.updateTransaction(updated)
-
-        auditLogDao.insertLog(
-            AuditLogEntity(
-                userId = userId,
-                userName = userName,
-                userRole = userRole,
-                action = "REASSIGN_WALLET_TX_SHIFT",
-                entityType = "WALLET_TX",
-                entityId = txId,
-                previousValue = prevShift,
-                newValue = newShiftId,
-                notes = "إعادة إسناد الحوالة: $reason"
+        db.withTransaction {
+            walletDao.updateTransaction(updated)
+            auditLogDao.insertLog(
+                AuditLogEntity(
+                    userId = userId,
+                    userName = userName,
+                    userRole = userRole,
+                    action = "REASSIGN_WALLET_TX_SHIFT",
+                    entityType = "WALLET_TX",
+                    entityId = txId,
+                    previousValue = prevShift,
+                    newValue = newShiftId,
+                    notes = "إعادة إسناد الحوالة: $reason"
+                )
             )
-        )
+        }
         return Result.success(updated)
     }
 }
