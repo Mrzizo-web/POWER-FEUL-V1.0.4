@@ -175,34 +175,36 @@ class SalesEngine(
             voidedByUserId = user.id,
             voidReason = reason
         )
-        saleDao.updateSale(updatedSale)
+        db.withTransaction {
+                    saleDao.updateSale(updatedSale)
 
-        // Restore inventory
-        val items = saleDao.getSaleItemsSync(saleId)
-        for (item in items) {
-            inventoryEngine.restoreForProduct(
-                productId = item.productId,
-                quantity = item.quantity,
-                saleId = saleId,
-                userId = user.id,
-                userName = user.name
-            )
+                    // Restore inventory
+                    val items = saleDao.getSaleItemsSync(saleId)
+                    for (item in items) {
+                        inventoryEngine.restoreForProduct(
+                            productId = item.productId,
+                            quantity = item.quantity,
+                            saleId = saleId,
+                            userId = user.id,
+                            userName = user.name
+                        )
+                    }
+
+                    auditLogDao.insertLog(
+                        AuditLogEntity(
+                            userId = user.id,
+                            userName = user.name,
+                            userRole = user.role.name,
+                            action = "SALE_VOIDED",
+                            entityType = "SALE",
+                            entityId = saleId,
+                            previousValue = "COMPLETED",
+                            newValue = "VOIDED",
+                            notes = "إلغاء فاتورة: $reason"
+                        )
+                    )
+
         }
-
-        auditLogDao.insertLog(
-            AuditLogEntity(
-                userId = user.id,
-                userName = user.name,
-                userRole = user.role.name,
-                action = "SALE_VOIDED",
-                entityType = "SALE",
-                entityId = saleId,
-                previousValue = "COMPLETED",
-                newValue = "VOIDED",
-                notes = "إلغاء فاتورة: $reason"
-            )
-        )
-
         return Result.success(updatedSale)
     }
 }
