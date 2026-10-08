@@ -7,8 +7,11 @@ data class ParsedWalletSms(
     val amount: Double,
     val transactionId: String,
     val sender: String,
-    val success: Boolean
+    val success: Boolean,
+    val direction: WalletDirection = WalletDirection.INCOMING
 )
+
+enum class WalletDirection { INCOMING, OUTGOING }
 
 interface WalletParser {
     val walletCode: String
@@ -17,160 +20,108 @@ interface WalletParser {
     fun parse(sender: String, body: String): ParsedWalletSms?
 }
 
-class JeebParser : WalletParser {
-    override val walletCode: String = "JEEB"
-    override val walletName: String = "جيب"
+class JaibParser : WalletParser {
+    override val walletCode = "JEEB"
+    override val walletName = "جيب"
+
+    private val incoming = Pattern.compile(
+        """^اضيف\s+(?<amount>\d+(?:\.\d+)?)\s+(?<currency>\S+)\s+(?<type>.+?)\s+رص:(?<balance>\d+(?:\.\d+)?)\S+\s+من\s+(?<senderName>.+?)-(?<senderId>\d+)$"""
+    )
+    private val outgoing = Pattern.compile(
+        """^خصم\s+(?<amount>\d+(?:\.\d+)?)\s+(?<currency>\S+)\s+(?<description>.+?)\s+رص:(?<balance>\d+(?:\.\d+)?)\S+\s+الى\s+(?<recipientId>\d+)\s+(?<recipientName>.+)$"""
+    )
 
     override fun canParse(sender: String, body: String): Boolean {
-        val s = sender.lowercase()
-        val b = body.lowercase()
-        return "jeeb" in s || "جيب" in b || "محفظة جيب" in b
+        val text = body.trim()
+        return text.startsWith("اضيف ") || text.startsWith("خصم ")
     }
 
     override fun parse(sender: String, body: String): ParsedWalletSms? {
-        try {
-            // Examples:
-            // "تم استلام حوالة بمبلغ 5000 ريال من 777123456 رقم العملية J102938"
-            // "تم إضافة مبلغ 5,000 ريال إلى حسابك في محفظة جيب رقم المرجع: J102938"
-            var amount = 0.0
-            var txId = ""
-            var parsedSender = ""
+        val text = body.trim()
 
-            val amtMatcher = Pattern.compile("""(?:مبلغ|حوالة بمبلغ|استلام)\s*([\d,]+(?:\.\d+)?)\s*(?:ريال|ر\.ي)""").matcher(body)
-            if (amtMatcher.find()) {
-                val clean = amtMatcher.group(1)?.replace(",", "") ?: "0"
-                amount = clean.toDoubleOrNull() ?: 0.0
-            }
-
-            val txMatcher = Pattern.compile("""(?:العملية|المرجع|رقم العملية|TxID|Ref:?)\s*[:#]?\s*([A-Za-z0-9_-]+)""").matcher(body)
-            if (txMatcher.find()) {
-                txId = txMatcher.group(1) ?: ""
-            }
-
-            val sndMatcher = Pattern.compile("""(?:من|المودع|المرسل)\s*[:#]?\s*([0-9٠-٩]+|[A-Za-z؀-ۿ\s]+)""").matcher(body)
-            if (sndMatcher.find()) {
-                parsedSender = sndMatcher.group(1)?.trim() ?: ""
-            }
-
-            if (amount > 0) {
-                return ParsedWalletSms(walletCode, amount, txId, parsedSender.ifEmpty { sender }, true)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        incoming.matcher(text).takeIf { it.matches() }?.let { match ->
+            val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
+            if (amount <= 0) return null
+            return ParsedWalletSms(walletCode, amount, "", match.group("senderName")!!.trim(), true, WalletDirection.INCOMING)
         }
+
+        outgoing.matcher(text).takeIf { it.matches() }?.let { match ->
+            val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
+            if (amount <= 0) return null
+            return ParsedWalletSms(walletCode, amount, "", match.group("recipientName")!!.trim(), true, WalletDirection.OUTGOING)
+        }
+
         return null
     }
 }
 
 class FloosakParser : WalletParser {
-    override val walletCode: String = "FLOOSAK"
-    override val walletName: String = "فلوسك"
+    override val walletCode = "FLOOSAK"
+    override val walletName = "فلوسك"
 
-    override fun canParse(sender: String, body: String): Boolean {
-        val s = sender.lowercase()
-        val b = body.lowercase()
-        return "floosak" in s || "فلوسك" in b
-    }
+    private val incoming = Pattern.compile(
+        """^استلمت حوالة من (?<senderName>.+?) بمبلغ (?<amount>\d+(?:\.\d+)?) (?<currency>\S+) رصيدك (?<balance>\d+(?:\.\d+)?) (?<balanceCurrency>\S+)$"""
+    )
+
+    override fun canParse(sender: String, body: String): Boolean =
+        body.trim().startsWith("استلمت حوالة من ")
 
     override fun parse(sender: String, body: String): ParsedWalletSms? {
-        try {
-            var amount = 0.0
-            var txId = ""
-            var parsedSender = ""
+        val match = incoming.matcher(body.trim())
+        if (!match.matches()) return null
 
-            val amtMatcher = Pattern.compile("""(?:مبلغ|استلمت|إيداع)\s*([\d,]+(?:\.\d+)?)\s*(?:ريال|ر\.ي)""").matcher(body)
-            if (amtMatcher.find()) {
-                val clean = amtMatcher.group(1)?.replace(",", "") ?: "0"
-                amount = clean.toDoubleOrNull() ?: 0.0
-            }
+        val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
+        if (amount <= 0) return null
+        if (match.group("currency") != match.group("balanceCurrency")) return null
 
-            val txMatcher = Pattern.compile("""(?:رقم العملية|رقم السند|Ref|ID)\s*[:#]?\s*([A-Za-z0-9_-]+)""").matcher(body)
-            if (txMatcher.find()) {
-                txId = txMatcher.group(1) ?: ""
-            }
-
-            val sndMatcher = Pattern.compile("""(?:من|مرسل من)\s*[:#]?\s*([0-9٠-٩]+|[A-Za-z؀-ۿ\s]+)""").matcher(body)
-            if (sndMatcher.find()) {
-                parsedSender = sndMatcher.group(1)?.trim() ?: ""
-            }
-
-            if (amount > 0) {
-                return ParsedWalletSms(walletCode, amount, txId, parsedSender.ifEmpty { sender }, true)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return null
+        return ParsedWalletSms(walletCode, amount, "", match.group("senderName")!!.trim(), true, WalletDirection.INCOMING)
     }
 }
 
-class HawalatyParser : WalletParser {
-    override val walletCode: String = "HAWALATY"
-    override val walletName: String = "حوالتي"
+class JawaliParser : WalletParser {
+    override val walletCode = "JAWALI"
+    override val walletName = "جوالي"
+
+    private val purchases = Pattern.compile(
+        """^لقد استلمت\s+(?<currency>\S+)\s+(?<amount>\d+)\s+كقيمة مشتريات بمرجع\s+(?<reference>\d+)\s+من\s+(?<sender>.+)$"""
+    )
+    private val directReceipt = Pattern.compile(
+        """^استلمت مبلغ\s+(?<currency>\S+)\s+(?<amount>\d+)\s+من\s+(?<senderId>\d+)\s+رصيدك هو\s+(?<balance>\d+)$"""
+    )
 
     override fun canParse(sender: String, body: String): Boolean {
-        val s = sender.lowercase()
-        val b = body.lowercase()
-        return "hawalaty" in s || "حوالتي" in b
+        val text = body.trim()
+        return text.startsWith("لقد استلمت ") || text.startsWith("استلمت مبلغ ")
     }
 
     override fun parse(sender: String, body: String): ParsedWalletSms? {
-        try {
-            var amount = 0.0
-            var txId = ""
-            var parsedSender = ""
+        val text = body.trim()
 
-            val amtMatcher = Pattern.compile("""(?:مبلغ|حوالة واردة)\s*([\d,]+(?:\.\d+)?)\s*(?:ريال|ر\.ي)""").matcher(body)
-            if (amtMatcher.find()) {
-                val clean = amtMatcher.group(1)?.replace(",", "") ?: "0"
-                amount = clean.toDoubleOrNull() ?: 0.0
-            }
-
-            val txMatcher = Pattern.compile("""(?:رقم الحوالة|رقم العملية|Ref)\s*[:#]?\s*([A-Za-z0-9_-]+)""").matcher(body)
-            if (txMatcher.find()) {
-                txId = txMatcher.group(1) ?: ""
-            }
-
-            val sndMatcher = Pattern.compile("""(?:من|المرسل)\s*[:#]?\s*([0-9٠-٩]+|[A-Za-z؀-ۿ\s]+)""").matcher(body)
-            if (sndMatcher.find()) {
-                parsedSender = sndMatcher.group(1)?.trim() ?: ""
-            }
-
-            if (amount > 0) {
-                return ParsedWalletSms(walletCode, amount, txId, parsedSender.ifEmpty { sender }, true)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        purchases.matcher(text).takeIf { it.matches() }?.let { match ->
+            val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
+            if (amount <= 0) return null
+            return ParsedWalletSms(walletCode, amount, match.group("reference")!!, match.group("sender")!!.trim(), true, WalletDirection.INCOMING)
         }
+
+        directReceipt.matcher(text).takeIf { it.matches() }?.let { match ->
+            val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
+            if (amount <= 0) return null
+            return ParsedWalletSms(walletCode, amount, "", match.group("senderId")!!, true, WalletDirection.INCOMING)
+        }
+
         return null
     }
 }
 
 object WalletParserRegistry {
-    private val parsers = mutableListOf<WalletParser>(
-        JeebParser(),
+    private val parsers: List<WalletParser> = listOf(
+        JaibParser(),
         FloosakParser(),
-        HawalatyParser()
+        JawaliParser()
     )
 
-    fun registerParser(parser: WalletParser) {
-        if (parsers.none { it.walletCode == parser.walletCode }) {
-            parsers.add(parser)
-        }
-    }
-
     fun parseSms(sender: String, body: String): ParsedWalletSms? {
-        for (parser in parsers) {
-            if (parser.canParse(sender, body)) {
-                val result = parser.parse(sender, body)
-                if (result != null) return result
-            }
-        }
-        // Fallback generic parsing
-        for (parser in parsers) {
-            val result = parser.parse(sender, body)
-            if (result != null) return result
-        }
-        return null
+        val parser = parsers.firstOrNull { it.canParse(sender, body) } ?: return null
+        return parser.parse(sender, body)
     }
 }
