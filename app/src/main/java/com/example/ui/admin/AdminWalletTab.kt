@@ -535,8 +535,8 @@ fun AdminWalletTab(
     if (showTestSmsDialog) {
         var selectedWalletCode by remember { mutableStateOf("JEEB") }
         var amountText by remember { mutableStateOf("5000") }
-        var senderText by remember { mutableStateOf("777123456") }
-        var txIdText by remember { mutableStateOf("J" + (System.currentTimeMillis() % 100000)) }
+        var senderText by remember { mutableStateOf("عبدالله الجميلي") }
+        var txIdText by remember { mutableStateOf("468486397181") }
 
         AlertDialog(
             onDismissRequest = { showTestSmsDialog = false },
@@ -577,8 +577,8 @@ fun AdminWalletTab(
                 Button(
                     onClick = {
                         val body = when (selectedWalletCode) {
-                            "JEEB" -> "تم استلام حوالة بمبلغ $amountText ريال من $senderText رقم العملية $txIdText"
-                            "FLOOSAK" -> "تم إيداع مبلغ $amountText ريال إلى حسابك في محفظة فلوسك من $senderText رقم العملية: $txIdText"
+                            "JEEB" -> "اضيف $amountText ر.ي تحويل مشترك رص:72758.47ر.ي من $senderText-77366225"
+                            "FLOOSAK" -> "استلمت حوالة من $senderText بمبلغ $amountText.00 ر.ي رصيدك 800.00 ر.ي"
                             else -> "لقد استلمت YER $amountText كقيمة مشتريات بمرجع $txIdText من $senderText"
                         }
                         onIngestTestSms(selectedWalletCode, body)
