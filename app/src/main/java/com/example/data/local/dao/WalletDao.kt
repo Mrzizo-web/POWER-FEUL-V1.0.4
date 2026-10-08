@@ -27,6 +27,9 @@ interface WalletDao {
     @Query("SELECT * FROM wallet_sms_inbox ORDER BY receivedAt DESC")
     fun getAllSms(): Flow<List<WalletSmsEntity>>
 
+    @Query("SELECT * FROM wallet_sms_inbox ORDER BY receivedAt DESC")
+    suspend fun getAllSmsSync(): List<WalletSmsEntity>
+
     @Query("SELECT * FROM wallet_sms_inbox WHERE id = :smsId LIMIT 1")
     suspend fun getSmsById(smsId: String): WalletSmsEntity?
 
