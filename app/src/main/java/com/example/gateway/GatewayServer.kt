@@ -141,7 +141,10 @@ class GatewayServer(
             }
 
             path == "/api/wallets" -> {
+                // Gateway exposes only the three officially supported wallets.
+                val officialCodes = setOf("JEEB", "FLOOSAK", "JAWALI")
                 val wallets = db.walletDao().getAllWalletsSync()
+                    .filter { it.code in officialCodes && it.enabled }
                 val items = wallets.joinToString(",") { w ->
                     """{"code":"${w.code}","name":"${w.name}","enabled":${w.enabled}}"""
                 }
@@ -149,7 +152,10 @@ class GatewayServer(
             }
 
             path == "/api/transactions" -> {
-                val txs = db.walletDao().getAllTransactionsSync().take(50)
+                val officialCodes = setOf("JEEB", "FLOOSAK", "JAWALI")
+                val txs = db.walletDao().getAllTransactionsSync()
+                    .filter { it.walletCode in officialCodes }
+                    .take(50)
                 val items = txs.joinToString(",") { tx ->
                     """{
                         "id":"${tx.id}",
