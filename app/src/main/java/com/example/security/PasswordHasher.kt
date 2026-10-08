@@ -19,39 +19,47 @@ class PasswordHasher {
         val random = SecureRandom()
         val salt = ByteArray(SALT_LENGTH)
         random.nextBytes(salt)
-        return salt.joinToString("") { "%02x".format(it) }
+        return bytesToHex(salt)
     }
 
     fun hash(pin: String, saltHex: String = generateSalt()): HashResult {
-        return try {
-            val saltBytes = hexToBytes(saltHex)
-            val spec = PBEKeySpec(pin.toCharArray(), saltBytes, ITERATIONS, KEY_LENGTH)
-            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-            val hashBytes = factory.generateSecret(spec).encoded
-            HashResult(bytesToHex(hashBytes), saltHex)
+        require(pin.isNotEmpty()) { "PIN must not be empty" }
+        val saltBytes = hexToBytes(saltHex)
+        val spec = PBEKeySpec(pin.toCharArray(), saltBytes, ITERATIONS, KEY_LENGTH)
+        val factory = try {
+            SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         } catch (e: Exception) {
-            val md = MessageDigest.getInstance("SHA-256")
-            md.update(hexToBytes(saltHex))
-            val hashBytes = md.digest(pin.toByteArray())
-            HashResult(bytesToHex(hashBytes), saltHex)
+            throw IllegalStateException("PBKDF2WithHmacSHA256 is required; refusing weak fallback", e)
         }
+        val hashBytes = try {
+            factory.generateSecret(spec).encoded
+        } finally {
+            spec.clearPassword()
+        }
+        return HashResult(bytesToHex(hashBytes), saltHex)
     }
 
     fun verify(pin: String, saltHex: String, expectedHashHex: String): Boolean {
-        val result = hash(pin, saltHex)
-        return result.hashHex == expectedHashHex
+        if (pin.isEmpty() || saltHex.isEmpty() || expectedHashHex.isEmpty()) return false
+        return try {
+            val result = hash(pin, saltHex)
+            MessageDigest.isEqual(
+                hexToBytes(result.hashHex),
+                hexToBytes(expectedHashHex)
+            )
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    private fun bytesToHex(bytes: ByteArray): String {
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
+    private fun bytesToHex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
 
     private fun hexToBytes(hex: String): ByteArray {
+        require(hex.length % 2 == 0) { "Invalid hex length" }
         val result = ByteArray(hex.length / 2)
         for (i in result.indices) {
-            val index = i * 2
-            val j = hex.substring(index, index + 2).toInt(16)
-            result[i] = j.toByte()
+            result[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }
         return result
     }
