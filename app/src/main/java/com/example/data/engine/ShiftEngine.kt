@@ -1,5 +1,6 @@
 package com.example.data.engine
 
+import androidx.room.withTransaction
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.AuditLogEntity
 import com.example.data.local.entity.ShiftCashMovementEntity
@@ -18,38 +19,49 @@ class ShiftEngine(private val db: AppDatabase) {
         openingCash: Double,
         notes: String = ""
     ): ShiftResult {
+        return db.withTransaction { startShiftInternal(user, openingCash, notes) }
+    }
+
+    private suspend fun startShiftInternal(
+        user: UserEntity,
+        openingCash: Double,
+        notes: String = ""
+    ): ShiftResult {
         val existing = shiftDao.getCurrentOpenShiftSync()
-        if (existing != null) {
-            return ShiftResult.Error("يوجد شفت مفتوح حالياً للمستخدم ${existing.userName}")
-        }
-
-        val lastNum = shiftDao.getLastShiftNumber() ?: 0
-        val shift = ShiftEntity(
-            shiftNumber = lastNum + 1,
-            userId = user.id,
-            userName = user.name,
-            openingCash = openingCash,
-            expectedCash = openingCash,
-            actualCash = openingCash,
-            status = ShiftStatus.OPEN,
-            notes = notes
-        )
-        shiftDao.insertShift(shift)
-
-        auditLogDao.insertLog(
-            AuditLogEntity(
+            if (existing != null) {
+                return ShiftResult.Error("يوجد شفت مفتوح حالياً للمستخدم ${existing.userName}")
+            }
+    
+            val lastNum = shiftDao.getLastShiftNumber() ?: 0
+            val shift = ShiftEntity(
+                shiftNumber = lastNum + 1,
                 userId = user.id,
                 userName = user.name,
-                userRole = user.role.name,
-                action = "SHIFT_STARTED",
-                entityType = "SHIFT",
-                entityId = shift.id,
-                newValue = "افتتاحي: $openingCash ريال",
-                notes = "بدء الشفت رقم ${shift.shiftNumber}"
+                openingCash = openingCash,
+                expectedCash = openingCash,
+                actualCash = openingCash,
+                status = ShiftStatus.OPEN,
+                notes = notes
             )
-        )
-
-        return ShiftResult.Success(shift)
+            shiftDao.insertShift(shift)
+    
+            auditLogDao.insertLog(
+                AuditLogEntity(
+                    userId = user.id,
+                    userName = user.name,
+                    userRole = user.role.name,
+                    action = "SHIFT_STARTED",
+                    entityType = "SHIFT",
+                    entityId = shift.id,
+                    newValue = "افتتاحي: $openingCash ريال",
+                    notes = "بدء الشفت رقم ${shift.shiftNumber}"
+                )
+            )
+    
+            return ShiftResult.Success(shift)
+        }
+    
+    
     }
 
     suspend fun closeShift(
@@ -60,35 +72,49 @@ class ShiftEngine(private val db: AppDatabase) {
         user: UserEntity,
         notes: String = ""
     ): ShiftResult {
+        return db.withTransaction { closeShiftInternal(shiftId, actualCash, handedOverCash, leftForNextShift, user, notes) }
+    }
+
+    private suspend fun closeShiftInternal(
+        shiftId: String,
+        actualCash: Double,
+        handedOverCash: Double,
+        leftForNextShift: Double,
+        user: UserEntity,
+        notes: String = ""
+    ): ShiftResult {
         val shift = shiftDao.getShiftById(shiftId) ?: return ShiftResult.Error("الشفت غير موجود")
-        val discrepancy = actualCash - shift.expectedCash
-
-        val closed = shift.copy(
-            endTime = System.currentTimeMillis(),
-            actualCash = actualCash,
-            handedOverCash = handedOverCash,
-            leftForNextShiftCash = leftForNextShift,
-            discrepancyAmount = discrepancy,
-            status = ShiftStatus.CLOSED,
-            notes = notes
-        )
-        shiftDao.updateShift(closed)
-
-        auditLogDao.insertLog(
-            AuditLogEntity(
-                userId = user.id,
-                userName = user.name,
-                userRole = user.role.name,
-                action = "SHIFT_CLOSED",
-                entityType = "SHIFT",
-                entityId = shift.id,
-                previousValue = "OPEN",
-                newValue = "CLOSED (عجز/فائض: $discrepancy)",
-                notes = "إغلاق شفت رقم ${shift.shiftNumber}"
+            val discrepancy = actualCash - shift.expectedCash
+    
+            val closed = shift.copy(
+                endTime = System.currentTimeMillis(),
+                actualCash = actualCash,
+                handedOverCash = handedOverCash,
+                leftForNextShiftCash = leftForNextShift,
+                discrepancyAmount = discrepancy,
+                status = ShiftStatus.CLOSED,
+                notes = notes
             )
-        )
-
-        return ShiftResult.Success(closed)
+            shiftDao.updateShift(closed)
+    
+            auditLogDao.insertLog(
+                AuditLogEntity(
+                    userId = user.id,
+                    userName = user.name,
+                    userRole = user.role.name,
+                    action = "SHIFT_CLOSED",
+                    entityType = "SHIFT",
+                    entityId = shift.id,
+                    previousValue = "OPEN",
+                    newValue = "CLOSED (عجز/فائض: $discrepancy)",
+                    notes = "إغلاق شفت رقم ${shift.shiftNumber}"
+                )
+            )
+    
+            return ShiftResult.Success(closed)
+        }
+    
+    
     }
 
     suspend fun acceptHandover(
@@ -97,23 +123,33 @@ class ShiftEngine(private val db: AppDatabase) {
         actualReceived: Double,
         notes: String = ""
     ): ShiftResult {
+        return db.withTransaction { acceptHandoverInternal(fromShiftId, currentUser, actualReceived, notes) }
+    }
+
+    private suspend fun acceptHandoverInternal(
+        fromShiftId: String,
+        currentUser: UserEntity,
+        actualReceived: Double,
+        notes: String = ""
+    ): ShiftResult {
         val fromShift = shiftDao.getShiftById(fromShiftId) ?: return ShiftResult.Error("الشفت السابق غير موجود")
-        val expected = fromShift.leftForNextShiftCash
-        val discrepancy = actualReceived - expected
-
-        val handover = ShiftHandoverEntity(
-            fromShiftId = fromShiftId,
-            fromUserId = fromShift.userId,
-            fromUserName = fromShift.userName,
-            toUserId = currentUser.id,
-            toUserName = currentUser.name,
-            expectedLeftAmount = expected,
-            actualReceivedAmount = actualReceived,
-            discrepancy = discrepancy,
-            notes = notes
-        )
-        shiftDao.insertHandover(handover)
-
-        return startShift(currentUser, actualReceived, "استلام من شفت ${fromShift.shiftNumber}")
+            val expected = fromShift.leftForNextShiftCash
+            val discrepancy = actualReceived - expected
+    
+            val handover = ShiftHandoverEntity(
+                fromShiftId = fromShiftId,
+                fromUserId = fromShift.userId,
+                fromUserName = fromShift.userName,
+                toUserId = currentUser.id,
+                toUserName = currentUser.name,
+                expectedLeftAmount = expected,
+                actualReceivedAmount = actualReceived,
+                discrepancy = discrepancy,
+                notes = notes
+            )
+            shiftDao.insertHandover(handover)
+    
+            return startShiftInternal(currentUser, actualReceived, "استلام من شفت ${fromShift.shiftNumber}")
+        }
     }
 }
