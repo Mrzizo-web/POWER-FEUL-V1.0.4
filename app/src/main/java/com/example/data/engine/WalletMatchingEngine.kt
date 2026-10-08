@@ -7,6 +7,7 @@ import com.example.data.local.entity.WalletSmsEntity
 import com.example.data.local.entity.WalletTransactionEntity
 import com.example.domain.model.SmsProcessingStatus
 import com.example.domain.model.WalletTransferStatus
+import java.security.MessageDigest
 import java.util.UUID
 
 sealed class IngestResult {
@@ -23,10 +24,22 @@ class WalletMatchingEngine(private val db: AppDatabase) {
     suspend fun ingestSms(
         sender: String,
         body: String,
-        receivedAt: Long = System.currentTimeMillis()
+        receivedAt: Long = System.currentTimeMillis(),
+        sourceSmsId: String? = null
     ): IngestResult {
         val parsed = WalletParserRegistry.parseSms(sender, body)
-        val smsId = UUID.randomUUID().toString()
+        // Stable id makes gateway retries idempotent even when the SMS has no financial reference.
+        val smsId = sourceSmsId?.trim().takeIf { !it.isNullOrEmpty() }
+            ?: stableSmsId(sender, receivedAt, body)
+
+        val alreadyReceived = walletDao.getSmsById(smsId)
+        if (alreadyReceived != null) {
+            val existingTx = alreadyReceived.matchedTransactionId?.let { walletDao.getTransactionById(it) }
+            if (existingTx != null) {
+                return IngestResult.Duplicate(existingTx, "نفس حدث SMS/Idempotency-Key تمت معالجته مسبقاً")
+            }
+            return IngestResult.Unmatched(alreadyReceived)
+        }
 
         if (parsed == null || parsed.amount <= 0) {
             val sms = WalletSmsEntity(
@@ -154,6 +167,12 @@ class WalletMatchingEngine(private val db: AppDatabase) {
         }
 
         return IngestResult.Created(tx, isOutOfShift)
+    }
+
+    private fun stableSmsId(sender: String, receivedAt: Long, body: String): String {
+        val source = "$sender|$receivedAt|$body".toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(source)
+        return "sms-" + digest.joinToString("") { "%02x".format(it) }
     }
 
     suspend fun updateTransactionStatus(
