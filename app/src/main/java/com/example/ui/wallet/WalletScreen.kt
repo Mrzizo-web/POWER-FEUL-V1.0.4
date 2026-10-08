@@ -1,12 +1,6 @@
 package com.example.ui.wallet
 
 import androidx.compose.foundation.clickable
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import android.content.pm.PackageManager
-import android.Manifest
-import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -50,13 +44,6 @@ fun WalletScreen(
     val canViewAll = PermissionChecker.hasPermission(currentUser.role, AppPermission.VIEW_ALL_TRANSFERS)
     val canReassign = PermissionChecker.hasPermission(currentUser.role, AppPermission.REASSIGN_TRANSFER)
 
-    val context = LocalContext.current
-    var hasSmsPermission by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
-    }
-    val smsPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        hasSmsPermission = granted
-    }
 
     var selectedWalletFilter by remember { mutableStateOf<String?>(null) }
     var selectedStatusFilter by remember { mutableStateOf<WalletTransferStatus?>(null) }
@@ -88,7 +75,7 @@ fun WalletScreen(
     // Totals per wallet
     val jeebTxs = transactions.filter { it.walletCode == "JEEB" && (canViewAll || it.shiftId == currentShift?.id) }
     val floosakTxs = transactions.filter { it.walletCode == "FLOOSAK" && (canViewAll || it.shiftId == currentShift?.id) }
-    val hawalatyTxs = transactions.filter { it.walletCode == "HAWALATY" && (canViewAll || it.shiftId == currentShift?.id) }
+    val jawaliTxs = transactions.filter { it.walletCode == "JAWALI" && (canViewAll || it.shiftId == currentShift?.id) }
 
     Scaffold(
         topBar = {
@@ -125,37 +112,6 @@ fun WalletScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // Permission Banner
-            if (!hasSmsPermission) {
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.SmsFailed, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text("إذن استقبال الرسائل SMS غير مفعل", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onErrorContainer)
-                                Text("يلزم تفعيل إذن الرسائل لمعالجة حوالات جيب وفلوسك وحوالتي تلقائياً", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
-                            }
-                        }
-                        Button(onClick = { smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS) }) {
-                            Text("منح الإذن", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
             // 1. CARDS PER WALLET: [ جيب ] [ فلوسك ] [ حوالتي ]
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -187,15 +143,15 @@ fun WalletScreen(
                     modifier = Modifier.weight(1f)
                 )
 
-                // HAWALATY CARD
+                // JAWALI CARD
                 WalletSummaryCard(
-                    title = "حوالتي",
-                    count = hawalatyTxs.size,
-                    total = hawalatyTxs.sumOf { it.amount },
+                    title = "جوالي",
+                    count = jawaliTxs.size,
+                    total = jawaliTxs.sumOf { it.amount },
                     color = Color(0xFF2E7D32),
-                    isSelected = selectedWalletFilter == "HAWALATY",
+                    isSelected = selectedWalletFilter == "JAWALI",
                     onClick = {
-                        selectedWalletFilter = if (selectedWalletFilter == "HAWALATY") null else "HAWALATY"
+                        selectedWalletFilter = if (selectedWalletFilter == "JAWALI") null else "JAWALI"
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -475,8 +431,8 @@ fun TestSmsDialog(
 ) {
     var selectedWallet by remember { mutableStateOf("JEEB") }
     var amountText by remember { mutableStateOf("5000") }
-    var senderText by remember { mutableStateOf("777123456") }
-    var txIdText by remember { mutableStateOf("J" + (System.currentTimeMillis() % 100000)) }
+    var senderText by remember { mutableStateOf("عبدالله الجميلي") }
+    var txIdText by remember { mutableStateOf("468486397181") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -485,7 +441,7 @@ fun TestSmsDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("اختر المحفظة:", fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("JEEB" to "جيب", "FLOOSAK" to "فلوسك", "HAWALATY" to "حوالتي").forEach { (code, name) ->
+                    listOf("JEEB" to "جيب", "FLOOSAK" to "فلوسك", "JAWALI" to "جوالي").forEach { (code, name) ->
                         FilterChip(
                             selected = selectedWallet == code,
                             onClick = { selectedWallet = code },
