@@ -203,13 +203,13 @@ class GatewayServer(
                         )
                         val resultJson = when (result) {
                             is IngestResult.Created -> {
-                                """{"success":true,"result":"CREATED","txId":"\${result.tx.id}","amount":\${result.tx.amount},"wallet":"\${result.tx.walletCode}","receivedAt":\${result.tx.receivedAt},"outOfShift":\${result.isOutOfShift}}"""
+                                """{"success":true,"result":"CREATED","txId":"${result.tx.id}","amount":${result.tx.amount},"wallet":"${result.tx.walletCode}","receivedAt":${result.tx.receivedAt},"outOfShift":${result.isOutOfShift}}"""
                             }
                             is IngestResult.Duplicate -> {
-                                """{"success":true,"result":"DUPLICATE","reason":"\${result.reason}","txId":"\${result.tx.id}"}"""
+                                """{"success":true,"result":"DUPLICATE","reason":"${result.reason}","txId":"${result.tx.id}"}"""
                             }
                             is IngestResult.Unmatched -> {
-                                """{"success":false,"result":"UNMATCHED","smsId":"\${result.sms.id}"}"""
+                                """{"success":false,"result":"UNMATCHED","smsId":"${result.sms.id}"}"""
                             }
                         }
                         Pair(200, resultJson)
