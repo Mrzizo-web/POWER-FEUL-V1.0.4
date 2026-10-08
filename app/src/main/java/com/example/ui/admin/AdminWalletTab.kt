@@ -41,7 +41,8 @@ fun AdminWalletTab(
     onClearCompletedQueue: () -> Unit = {},
     onIngestTestSms: (sender: String, body: String) -> Unit = { _, _ -> },
     onUpdateStatus: (txId: String, newStatus: WalletTransferStatus, reason: String) -> Unit,
-    onReassignShift: (txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) -> Unit = { _, _, _, _, _ -> }
+    onReassignShift: (txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) -> Unit = { _, _, _, _, _ -> },
+    onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> }
 ) {
     var selectedSection by remember { mutableStateOf(0) } // 0: Transactions, 1: SMS Inbox, 2: Gateway & Wi-Fi, 3: Wallets
     var searchQuery by remember { mutableStateOf("") }
@@ -218,6 +219,34 @@ fun AdminWalletTab(
                                         checked = isGatewayRunning,
                                         onCheckedChange = { onToggleGateway() }
                                     )
+                                }
+
+                                var gatewayToken by remember { mutableStateOf("") }
+                                var gatewayDeviceId by remember { mutableStateOf("") }
+
+                                Text("أمان بوابة SMS", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                OutlinedTextField(
+                                    value = gatewayDeviceId,
+                                    onValueChange = { gatewayDeviceId = it },
+                                    label = { Text("Gateway Device ID المسموح") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = gatewayToken,
+                                    onValueChange = { gatewayToken = it },
+                                    label = { Text("Gateway Token المشترك") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Button(
+                                    onClick = {
+                                        onSaveSetting("gateway_device_id", gatewayDeviceId.trim())
+                                        onSaveSetting("gateway_token", gatewayToken.trim())
+                                    },
+                                    enabled = gatewayDeviceId.isNotBlank() && gatewayToken.isNotBlank()
+                                ) {
+                                    Text("حفظ بيانات أمان البوابة")
                                 }
 
                                 Text(
@@ -516,7 +545,7 @@ fun AdminWalletTab(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("اختر المحفظة:", fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("JEEB" to "جيب", "FLOOSAK" to "فلوسك", "HAWALATY" to "حوالتي").forEach { (code, name) ->
+                        listOf("JEEB" to "جيب", "FLOOSAK" to "فلوسك", "JAWALI" to "جوالي").forEach { (code, name) ->
                             FilterChip(
                                 selected = selectedWalletCode == code,
                                 onClick = { selectedWalletCode = code },
@@ -550,7 +579,7 @@ fun AdminWalletTab(
                         val body = when (selectedWalletCode) {
                             "JEEB" -> "تم استلام حوالة بمبلغ $amountText ريال من $senderText رقم العملية $txIdText"
                             "FLOOSAK" -> "تم إيداع مبلغ $amountText ريال إلى حسابك في محفظة فلوسك من $senderText رقم العملية: $txIdText"
-                            else -> "حوالة واردة بمبلغ $amountText ريال من $senderText رقم الحوالة $txIdText"
+                            else -> "لقد استلمت YER $amountText كقيمة مشتريات بمرجع $txIdText من $senderText"
                         }
                         onIngestTestSms(selectedWalletCode, body)
                         showTestSmsDialog = false
