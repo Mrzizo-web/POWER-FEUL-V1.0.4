@@ -89,7 +89,7 @@ class WalletShiftIntegrationTest {
         assertTrue(first is IngestResult.Created)
         assertTrue(second is IngestResult.Duplicate)
         assertEquals(1, db.walletDao().getAllTransactionsSync().size)
-        assertEquals(1, db.walletDao().getAllSmsForTest().size)
+        assertEquals(1, db.walletDao().getAllSmsSync().size)
     }
 
     @Test
