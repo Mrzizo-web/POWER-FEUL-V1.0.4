@@ -1,5 +1,6 @@
 package com.example.data.engine
 
+import androidx.room.withTransaction
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.*
 import com.example.domain.model.CustomerStatus
@@ -77,84 +78,86 @@ class SalesEngine(
             notes = notes
         )
 
-        saleDao.insertSale(saleEntity)
+        db.withTransaction {
+                    saleDao.insertSale(saleEntity)
 
-        val saleItems = items.map { item ->
-            SaleItemEntity(
-                saleId = saleId,
-                productId = item.product.id,
-                productName = item.product.name,
-                quantity = item.quantity,
-                unitPrice = item.unitPrice,
-                totalPrice = item.totalPrice,
-                unitCost = item.product.costPrice,
-                totalCost = item.product.costPrice * item.quantity
-            )
+                    val saleItems = items.map { item ->
+                        SaleItemEntity(
+                            saleId = saleId,
+                            productId = item.product.id,
+                            productName = item.product.name,
+                            quantity = item.quantity,
+                            unitPrice = item.unitPrice,
+                            totalPrice = item.totalPrice,
+                            unitCost = item.product.costPrice,
+                            totalCost = item.product.costPrice * item.quantity
+                        )
+                    }
+                    saleDao.insertSaleItems(saleItems)
+
+                    // Deduct inventory for all items
+                    for (item in items) {
+                        inventoryEngine.consumeForProduct(
+                            productId = item.product.id,
+                            quantity = item.quantity,
+                            saleId = saleId,
+                            userId = user.id,
+                            userName = user.name
+                        )
+                    }
+
+                    // Update Shift totals
+                    val currentShift = shiftDao.getShiftById(shift.id) ?: shift
+                    val updatedShift = when (paymentMethod) {
+                        PaymentMethod.CASH -> {
+                            val newCashSales = currentShift.totalCashSales + netAmount
+                            val newExpected = currentShift.expectedCash + netAmount
+                            currentShift.copy(totalCashSales = newCashSales, expectedCash = newExpected)
+                        }
+                        PaymentMethod.E_WALLET -> {
+                            currentShift.copy(totalWalletSales = currentShift.totalWalletSales + netAmount)
+                        }
+                        PaymentMethod.DEBT -> {
+                            currentShift.copy(totalDebtSales = currentShift.totalDebtSales + netAmount)
+                        }
+                    }
+                    shiftDao.updateShift(updatedShift)
+
+                    // If debt, update customer debt and log transaction
+                    if (paymentMethod == PaymentMethod.DEBT && customer != null) {
+                        val newDebt = customer.currentDebt + netAmount
+                        val newStatus = if (customer.creditLimit > 0 && newDebt >= customer.creditLimit) CustomerStatus.BLOCKED else CustomerStatus.ACTIVE
+                        customerDao.updateDebt(customer.id, newDebt, newStatus)
+                        debtTransactionDao.insertDebtTransaction(
+                            DebtTransactionEntity(
+                                customerId = customer.id,
+                                customerName = customer.name,
+                                type = "SALE",
+                                amount = netAmount,
+                                balanceAfter = newDebt,
+                                paymentMethod = PaymentMethod.DEBT,
+                                referenceId = invoiceNumber,
+                                notes = "فاتورة بيع آجل $invoiceNumber",
+                                userId = user.id,
+                                userName = user.name
+                            )
+                        )
+                    }
+
+                    auditLogDao.insertLog(
+                        AuditLogEntity(
+                            userId = user.id,
+                            userName = user.name,
+                            userRole = user.role.name,
+                            action = "SALE_COMPLETED",
+                            entityType = "SALE",
+                            entityId = saleId,
+                            newValue = "$netAmount ريال ($invoiceNumber)",
+                            notes = "تمت عملية البيع بنجاح عبر ${paymentMethod.titleAr}"
+                        )
+                    )
+
         }
-        saleDao.insertSaleItems(saleItems)
-
-        // Deduct inventory for all items
-        for (item in items) {
-            inventoryEngine.consumeForProduct(
-                productId = item.product.id,
-                quantity = item.quantity,
-                saleId = saleId,
-                userId = user.id,
-                userName = user.name
-            )
-        }
-
-        // Update Shift totals
-        val currentShift = shiftDao.getShiftById(shift.id) ?: shift
-        val updatedShift = when (paymentMethod) {
-            PaymentMethod.CASH -> {
-                val newCashSales = currentShift.totalCashSales + netAmount
-                val newExpected = currentShift.expectedCash + netAmount
-                currentShift.copy(totalCashSales = newCashSales, expectedCash = newExpected)
-            }
-            PaymentMethod.E_WALLET -> {
-                currentShift.copy(totalWalletSales = currentShift.totalWalletSales + netAmount)
-            }
-            PaymentMethod.DEBT -> {
-                currentShift.copy(totalDebtSales = currentShift.totalDebtSales + netAmount)
-            }
-        }
-        shiftDao.updateShift(updatedShift)
-
-        // If debt, update customer debt and log transaction
-        if (paymentMethod == PaymentMethod.DEBT && customer != null) {
-            val newDebt = customer.currentDebt + netAmount
-            val newStatus = if (customer.creditLimit > 0 && newDebt >= customer.creditLimit) CustomerStatus.BLOCKED else CustomerStatus.ACTIVE
-            customerDao.updateDebt(customer.id, newDebt, newStatus)
-            debtTransactionDao.insertDebtTransaction(
-                DebtTransactionEntity(
-                    customerId = customer.id,
-                    customerName = customer.name,
-                    type = "SALE",
-                    amount = netAmount,
-                    balanceAfter = newDebt,
-                    paymentMethod = PaymentMethod.DEBT,
-                    referenceId = invoiceNumber,
-                    notes = "فاتورة بيع آجل $invoiceNumber",
-                    userId = user.id,
-                    userName = user.name
-                )
-            )
-        }
-
-        auditLogDao.insertLog(
-            AuditLogEntity(
-                userId = user.id,
-                userName = user.name,
-                userRole = user.role.name,
-                action = "SALE_COMPLETED",
-                entityType = "SALE",
-                entityId = saleId,
-                newValue = "$netAmount ريال ($invoiceNumber)",
-                notes = "تمت عملية البيع بنجاح عبر ${paymentMethod.titleAr}"
-            )
-        )
-
         return SaleResult.Success(saleEntity, invoiceNumber, cashChange)
     }
 
