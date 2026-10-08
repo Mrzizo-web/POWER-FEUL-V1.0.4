@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 import com.example.data.local.dao.*
 import com.example.data.local.entity.*
 import com.example.data.local.migration.MIGRATION_1_2
+import com.example.data.local.migration.MIGRATION_2_3
 
 @Database(
     entities = [
@@ -78,7 +79,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "power_feul_pos_db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance
