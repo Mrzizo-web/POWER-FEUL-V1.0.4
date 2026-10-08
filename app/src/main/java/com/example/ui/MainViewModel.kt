@@ -684,7 +684,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     snackbarMessage.value = "تنبيه: ${result.reason}"
                 }
                 is IngestResult.Unmatched -> {
-                    snackbarMessage.value = "وصلت رسالة غير مطابقة لمحافظ جيب/فلوسك/حوالتي، تم حفظها في الصندوق"
+                    snackbarMessage.value = "وصلت رسالة غير مطابقة لمحافظ جيب/فلوسك/جوالي، تم حفظها في الصندوق"
                 }
             }
         }
