@@ -79,11 +79,11 @@ fun SessionLockDialog(
                         onClick = {
                             if (pin.length !in 4..6) {
                                 error = "رمز PIN يجب أن يكون من 4 إلى 6 أرقام"
-                                return@Button
-                            }
-                            val ok = onUnlock(pin)
-                            if (!ok) {
-                                error = "رمز PIN غير صحيح"
+                            } else {
+                                val ok = onUnlock(pin)
+                                if (!ok) {
+                                    error = "رمز PIN غير صحيح"
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f)
