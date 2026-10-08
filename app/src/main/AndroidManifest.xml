@@ -37,7 +37,7 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- SMS Receiver for Real-time Wallet Payments (Jeeb, Floosak, Hawalaty) -->
+        <!-- SMS Receiver for Real-time Wallet Payments (Jeeb, Floosak, Jawali) -->
         <receiver
             android:name="com.example.gateway.SmsReceiver"
             android:exported="true"
