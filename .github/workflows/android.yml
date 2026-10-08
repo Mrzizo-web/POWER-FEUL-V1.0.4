@@ -19,6 +19,23 @@ jobs:
           java-version: "17"
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Static architecture guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R --include='*.kt' -n 'fallbackToDestructiveMigration' app/src; then
+            echo 'ERROR: destructive Room migration fallback is forbidden.'
+            exit 1
+          fi
+          if grep -R --include='*.xml' -n 'android.permission.RECEIVE_SMS\|android.permission.READ_SMS' app/src/main/AndroidManifest.xml; then
+            echo 'ERROR: POS must not request SMS permissions; SMS belongs to the independent Gateway.'
+            exit 1
+          fi
+          if grep -R --include='*.kt' -n 'HAWALATY\|HAWALATY' app/src/main; then
+            echo 'ERROR: legacy Hawalaty wallet reference found in POS source.'
+            exit 1
+          fi
+
       - name: Unit tests
         run: gradle testDebugUnitTest
       - name: Build debug APK
