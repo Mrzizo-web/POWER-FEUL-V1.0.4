@@ -51,7 +51,7 @@ fun SessionLockDialog(
 
                 OutlinedTextField(
                     value = pin,
-                    onValueChange = { pin = it; error = null },
+                    onValueChange = { value -> if (value.length <= 6 && value.all(Char::isDigit)) { pin = value; error = null } },
                     label = { Text("أدخل رمز PIN لإلغاء القفل") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
@@ -77,6 +77,10 @@ fun SessionLockDialog(
                     }
                     Button(
                         onClick = {
+                            if (pin.length !in 4..6) {
+                                error = "رمز PIN يجب أن يكون من 4 إلى 6 أرقام"
+                                return@Button
+                            }
                             val ok = onUnlock(pin)
                             if (!ok) {
                                 error = "رمز PIN غير صحيح"
