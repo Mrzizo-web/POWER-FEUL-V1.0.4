@@ -144,7 +144,8 @@ fun AdminMainScreen(
                         onClearCompletedQueue = onClearCompletedQueue,
                         onIngestTestSms = onIngestTestSms,
                         onUpdateStatus = onUpdateWalletStatus,
-                        onReassignShift = onReassignShift
+                        onReassignShift = onReassignShift,
+                        onSaveSetting = onSaveSetting
                     )
                     AdminTab.AI_ASSISTANT -> AdminAiTab(insights, onAskAi, onSaveApiKey)
                     AdminTab.BACKUP -> AdminBackupTab(onExportSalesCsv, onCreateBackupJson, backupStatusMessage)
