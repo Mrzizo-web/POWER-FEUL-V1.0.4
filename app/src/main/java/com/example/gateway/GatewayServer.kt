@@ -70,14 +70,17 @@ class GatewayServer(
             val method = parts[0]
             val path = parts[1]
 
-            // Read headers
+            val headers = mutableMapOf<String, String>()
             var contentLength = 0
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                if (line.isNullOrBlank()) break
-                val lower = line!!.lowercase()
-                if (lower.startsWith("content-length:")) {
-                    contentLength = lower.substringAfter("content-length:").trim().toIntOrNull() ?: 0
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (line.isBlank()) break
+                val colon = line.indexOf(':')
+                if (colon > 0) {
+                    val key = line.substring(0, colon).trim().lowercase()
+                    val value = line.substring(colon + 1).trim()
+                    headers[key] = value
+                    if (key == "content-length") contentLength = value.toIntOrNull() ?: 0
                 }
             }
 
@@ -95,13 +98,13 @@ class GatewayServer(
             }
             val body = bodyBuilder.toString()
 
-            val (statusCode, responseJson) = processRequest(method, path, body)
+            val (statusCode, responseJson) = processRequest(method, path, body, headers)
 
             out.write("HTTP/1.1 $statusCode OK\r\n")
             out.write("Content-Type: application/json; charset=UTF-8\r\n")
             out.write("Access-Control-Allow-Origin: *\r\n")
             out.write("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
-            out.write("Access-Control-Allow-Headers: Content-Type\r\n")
+            out.write("Access-Control-Allow-Headers: Content-Type, X-Gateway-Token, X-Gateway-Device-Id, X-Gateway-Event-Id, Idempotency-Key\r\n")
             val bytes = responseJson.toByteArray(Charsets.UTF_8)
             out.write("Content-Length: ${bytes.size}\r\n")
             out.write("Connection: close\r\n\r\n")
@@ -116,7 +119,7 @@ class GatewayServer(
         }
     }
 
-    private suspend fun processRequest(method: String, path: String, body: String): Pair<Int, String> {
+    private suspend fun processRequest(method: String, path: String, body: String, headers: Map<String, String>): Pair<Int, String> {
         if (method == "OPTIONS") {
             return Pair(200, "{}")
         }
@@ -172,25 +175,45 @@ class GatewayServer(
             }
 
             path == "/api/sms/ingest" && method == "POST" -> {
-                val sender = extractJsonField(body, "sender")
-                val smsBody = extractJsonField(body, "body")
+                val configuredToken = db.settingsDao().getSetting("gateway_token")?.trim().orEmpty()
+                val configuredDeviceId = db.settingsDao().getSetting("gateway_device_id")?.trim().orEmpty()
+                val suppliedToken = headers["x-gateway-token"].orEmpty()
+                val suppliedDeviceId = headers["x-gateway-device-id"].orEmpty()
+                val eventId = headers["x-gateway-event-id"].orEmpty().ifBlank { headers["idempotency-key"].orEmpty() }
 
-                if (sender.isBlank() || smsBody.isBlank()) {
-                    Pair(400, """{"error":"sender and body required"}""")
+                if (configuredToken.isBlank() || configuredDeviceId.isBlank()) {
+                    Pair(503, """{"error":"Gateway security is not configured"}""")
+                } else if (suppliedToken != configuredToken || suppliedDeviceId != configuredDeviceId) {
+                    Pair(401, """{"error":"Invalid gateway credentials"}""")
+                } else if (eventId.isBlank()) {
+                    Pair(400, """{"error":"X-Gateway-Event-Id or Idempotency-Key is required"}""")
                 } else {
-                    val result = walletMatchingEngine.ingestSms(sender, smsBody)
-                    val resultJson = when (result) {
-                        is IngestResult.Created -> {
-                            """{"success":true,"result":"CREATED","txId":"${result.tx.id}","amount":${result.tx.amount},"wallet":"${result.tx.walletCode}","outOfShift":${result.isOutOfShift}}"""
+                    val sender = extractJsonField(body, "sender")
+                    val smsBody = extractJsonField(body, "body")
+                    val receivedAt = extractJsonLong(body, "receivedAt") ?: System.currentTimeMillis()
+
+                    if (sender.isBlank() || smsBody.isBlank()) {
+                        Pair(400, """{"error":"sender and body required"}""")
+                    } else {
+                        val result = walletMatchingEngine.ingestSms(
+                            sender = sender,
+                            body = smsBody,
+                            receivedAt = receivedAt,
+                            sourceSmsId = eventId
+                        )
+                        val resultJson = when (result) {
+                            is IngestResult.Created -> {
+                                """{"success":true,"result":"CREATED","txId":"\${result.tx.id}","amount":\${result.tx.amount},"wallet":"\${result.tx.walletCode}","receivedAt":\${result.tx.receivedAt},"outOfShift":\${result.isOutOfShift}}"""
+                            }
+                            is IngestResult.Duplicate -> {
+                                """{"success":true,"result":"DUPLICATE","reason":"\${result.reason}","txId":"\${result.tx.id}"}"""
+                            }
+                            is IngestResult.Unmatched -> {
+                                """{"success":false,"result":"UNMATCHED","smsId":"\${result.sms.id}"}"""
+                            }
                         }
-                        is IngestResult.Duplicate -> {
-                            """{"success":false,"result":"DUPLICATE","reason":"${result.reason}","txId":"${result.tx.id}"}"""
-                        }
-                        is IngestResult.Unmatched -> {
-                            """{"success":false,"result":"UNMATCHED","smsId":"${result.sms.id}"}"""
-                        }
+                        Pair(200, resultJson)
                     }
-                    Pair(200, resultJson)
                 }
             }
 
@@ -204,8 +227,17 @@ class GatewayServer(
     }
 
     private fun extractJsonField(json: String, key: String): String {
-        val pattern = Regex(""""$key"\s*:\s*"([^"]*)"""")
-        val match = pattern.find(json)
-        return match?.groupValues?.get(1) ?: ""
+        val pattern = Regex(""""$key"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        val match = pattern.find(json) ?: return ""
+        return match.groupValues[1]
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\"", """)
+            .replace("\\\\", "\\")
+    }
+
+    private fun extractJsonLong(json: String, key: String): Long? {
+        val pattern = Regex(""""$key"\s*:\s*(-?\d+)""")
+        return pattern.find(json)?.groupValues?.getOrNull(1)?.toLongOrNull()
     }
 }
