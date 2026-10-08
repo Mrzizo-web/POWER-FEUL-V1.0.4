@@ -17,6 +17,15 @@ interface ShiftDao {
     @Query("SELECT * FROM shifts WHERE status = 'OPEN' LIMIT 1")
     suspend fun getCurrentOpenShiftSync(): ShiftEntity?
 
+    @Query("""
+        SELECT * FROM shifts
+        WHERE startTime <= :receivedAt
+          AND (endTime IS NULL OR endTime >= :receivedAt)
+        ORDER BY startTime DESC
+        LIMIT 1
+    """)
+    suspend fun getShiftContainingTime(receivedAt: Long): ShiftEntity?
+
     @Query("SELECT * FROM shifts WHERE id = :id LIMIT 1")
     suspend fun getShiftById(id: String): ShiftEntity?
 
