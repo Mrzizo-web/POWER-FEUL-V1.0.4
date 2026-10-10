@@ -359,12 +359,19 @@ fun AdminAuditLogTab(
 @Composable
 fun AdminSettingsTab(
     users: List<UserEntity>,
-    onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> }
+    gatewayTokenValue: String,
+    gatewayDeviceIdValue: String,
+    gatewayPortValue: Int,
+    autoStartGatewayValue: Boolean,
+    onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> },
+    onSaveGatewaySettings: (token: String, deviceId: String, port: String, autoStart: Boolean) -> Unit = { _, _, _, _ -> }
 ) {
     var gymName by remember { mutableStateOf("نادي Power Home Gym") }
-    var gatewayPort by remember { mutableStateOf("8080") }
-    var autoLockMinutes by remember { mutableStateOf("2") }
-    var autoStartGateway by remember { mutableStateOf(true) }
+    var gatewayPort by remember(gatewayPortValue) { mutableStateOf(gatewayPortValue.toString()) }
+    var gatewayToken by remember(gatewayTokenValue) { mutableStateOf(gatewayTokenValue) }
+    var gatewayDeviceId by remember(gatewayDeviceIdValue) { mutableStateOf(gatewayDeviceIdValue) }
+    var autoStartGateway by remember(autoStartGatewayValue) { mutableStateOf(autoStartGatewayValue) }
+    var configError by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -379,37 +386,80 @@ fun AdminSettingsTab(
                         value = gymName,
                         onValueChange = { gymName = it },
                         label = { Text("اسم المنشأة / النادي") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
                     OutlinedTextField(
                         value = gatewayPort,
-                        onValueChange = { gatewayPort = it },
-                        label = { Text("منفذ بوابة الـ Wi-Fi المحلية (Port)") },
-                        modifier = Modifier.fillMaxWidth()
+                        onValueChange = { gatewayPort = it.filter(Char::isDigit).take(5); configError = null },
+                        label = { Text("منفذ بوابة Wi-Fi المحلية (Port)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
                     OutlinedTextField(
-                        value = autoLockMinutes,
-                        onValueChange = { autoLockMinutes = it },
-                        label = { Text("مدة قفل الجلسة عند عدم النشاط (دقائق)") },
-                        modifier = Modifier.fillMaxWidth()
+                        value = gatewayToken,
+                        onValueChange = { gatewayToken = it.trim(); configError = null },
+                        label = { Text("رمز Gateway (32 حرفًا على الأقل)") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = gatewayDeviceId,
+                        onValueChange = { gatewayDeviceId = it.trim(); configError = null },
+                        label = { Text("معرّف جهاز SMS Gateway") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Text(
+                        "يجب إدخال الرمز ومعرّف الجهاز نفسيهما في تطبيق SMS Gateway. اترك الحقلين فارغين إذا لم تجهّز الربط بعد.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = "5",
+                        onValueChange = {},
+                        label = { Text("القفل التلقائي عند عدم النشاط (دقائق)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = false,
+                        singleLine = true
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text("الاسترداد التلقائي بعد إعادة التشغيل (Restart Recovery):", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text("تشغيل خادم بوابة الرسائل فور إقلاع الجهاز لضمان عدم ضياع أي حوالة", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("تشغيل بوابة الرسائل تلقائيًا بعد إعادة التشغيل", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(
+                                "قد يمنع Android 15 وما بعده تشغيل خادم الشبكة تلقائيًا عند الإقلاع؛ في هذه الحالة شغّله من التطبيق.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         Switch(checked = autoStartGateway, onCheckedChange = { autoStartGateway = it })
                     }
+                    if (configError != null) {
+                        Text(configError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                     Button(
                         onClick = {
-                            onSaveSetting("gym_name", gymName)
-                            onSaveSetting("gateway_port", gatewayPort)
-                            onSaveSetting("auto_lock_minutes", autoLockMinutes)
-                            onSaveSetting("auto_start_gateway", autoStartGateway.toString())
+                            val cleanToken = gatewayToken.trim()
+                            val cleanDeviceId = gatewayDeviceId.trim()
+                            val parsedPort = gatewayPort.toIntOrNull()
+                            configError = when {
+                                parsedPort == null || parsedPort !in 1..65535 ->
+                                    "أدخل منفذًا صحيحًا بين 1 و65535."
+                                cleanToken.isNotEmpty() && cleanToken.length < 32 ->
+                                    "رمز Gateway يجب أن يتكون من 32 حرفًا على الأقل."
+                                cleanToken.isNotEmpty() != cleanDeviceId.isNotEmpty() ->
+                                    "أدخل الرمز ومعرّف الجهاز معًا، أو اترك الحقلين فارغين."
+                                else -> null
+                            }
+                            if (configError == null) {
+                                onSaveSetting("gym_name", gymName)
+                                onSaveGatewaySettings(cleanToken, cleanDeviceId, gatewayPort, autoStartGateway)
+                            }
                         },
                         modifier = Modifier.align(Alignment.End)
                     ) {
@@ -423,8 +473,8 @@ fun AdminSettingsTab(
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("معلومات النظام والأمان:", fontWeight = FontWeight.Bold)
-                    Text("نظام التشغيل: POWER FEUL POS & SMS GATEWAY 1.0", fontSize = 13.sp)
-                    Text("قاعدة البيانات: SQLite / Room (Local-First Zero-Cloud)", fontSize = 13.sp)
+                    Text("نظام التشغيل: POWER FEUL POS", fontSize = 13.sp)
+                    Text("قاعدة البيانات: SQLite / Room (محلي دون مزامنة سحابية)", fontSize = 13.sp)
                     Text("المحافظ المدعومة: جيب (JEEB) • فلوسك (FLOOSAK) • جوالي (JAWALI)", fontSize = 13.sp)
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text("المستخدمون المصرح لهم بالدخول (${users.size}):", fontWeight = FontWeight.Bold)
