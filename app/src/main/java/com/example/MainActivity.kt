@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
                     val lastCompletedSale by viewModel.lastCompletedSale.collectAsStateWithLifecycle()
                     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
                     val loginErrorMessage by viewModel.loginErrorMessage.collectAsStateWithLifecycle()
+                    val isInitializing by viewModel.isInitializing.collectAsStateWithLifecycle()
                     val backupStatusMessage by viewModel.backupStatusMessage.collectAsStateWithLifecycle()
 
                     val snackbarHostState = remember { SnackbarHostState() }
@@ -97,6 +98,8 @@ class MainActivity : ComponentActivity() {
                                     LoginScreen(
                                         userProfiles = userProfiles,
                                         errorMessage = loginErrorMessage,
+                                        isInitializing = isInitializing,
+                                        onRetryInitialization = { viewModel.retryInitialization() },
                                         onAuthenticate = { uId, pin ->
                                             viewModel.authenticate(uId, pin)
                                         },
