@@ -26,8 +26,22 @@ object DatabaseSeeder {
                     isActive = true
                 )
             )
-        } else if (!existingOwner.isActive) {
-            db.userDao().updateUser(existingOwner.copy(isActive = true, updatedAt = System.currentTimeMillis()))
+        } else if (
+            !existingOwner.isActive ||
+            existingOwner.role != UserRole.OWNER ||
+            existingOwner.username != "ziad" ||
+            existingOwner.name != "المالك"
+        ) {
+            // Repair the reserved owner account without touching financial records.
+            db.userDao().updateUser(
+                existingOwner.copy(
+                    name = "المالك",
+                    username = "ziad",
+                    role = UserRole.OWNER,
+                    isActive = true,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
         }
 
         // Seed Wallets if not present
