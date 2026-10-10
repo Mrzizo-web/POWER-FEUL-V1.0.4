@@ -10,6 +10,7 @@ import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.security.MessageDigest
+import org.json.JSONObject
 
 class GatewayServer(
     private val db: AppDatabase,
@@ -238,18 +239,24 @@ class GatewayServer(
     }
 
     private fun extractJsonField(json: String, key: String): String {
-        val pattern = Regex(""""$key"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"""")
-        val match = pattern.find(json) ?: return ""
-        return match.groupValues[1]
-            .replace("\\n", "\n")
-            .replace("\\r", "\r")
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\")
+        return try {
+            val value = JSONObject(json).opt(key)
+            if (value == null || value == JSONObject.NULL) "" else value.toString()
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun extractJsonLong(json: String, key: String): Long? {
-        val pattern = Regex(""""$key"\\s*:\\s*(-?\\d+)""")
-        return pattern.find(json)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        return try {
+            when (val value = JSONObject(json).opt(key)) {
+                is Number -> value.toLong()
+                is String -> value.toLongOrNull()
+                else -> null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun jsonEscape(value: String): String = value
