@@ -37,6 +37,8 @@ fun AdminMainScreen(
     isGatewayRunning: Boolean = false,
     gatewayIp: String = "127.0.0.1",
     gatewayPort: Int = 8080,
+    gatewayToken: String = "",
+    gatewayDeviceId: String = "",
     backupStatusMessage: String?,
     onBack: () -> Unit,
     onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit,
@@ -159,7 +161,7 @@ fun AdminMainScreen(
                     )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)
-                    AdminTab.SETTINGS -> AdminSettingsTab(users, onSaveSetting)
+                    AdminTab.SETTINGS -> AdminSettingsTab(users, gatewayToken, gatewayDeviceId, onSaveSetting)
                 }
             }
         }
