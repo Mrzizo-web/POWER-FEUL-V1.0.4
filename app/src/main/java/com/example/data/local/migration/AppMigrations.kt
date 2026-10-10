@@ -93,3 +93,28 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         )
     }
 }
+
+/**
+ * Repair databases created by an earlier v3 build where the queue table may be missing.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS gateway_offline_queue (
+                id TEXT NOT NULL PRIMARY KEY,
+                type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                targetEndpoint TEXT NOT NULL,
+                status TEXT NOT NULL,
+                retryCount INTEGER NOT NULL,
+                maxRetries INTEGER NOT NULL,
+                lastAttemptAt INTEGER NOT NULL,
+                nextAttemptAt INTEGER NOT NULL,
+                errorMessage TEXT NOT NULL,
+                createdAt INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+}
