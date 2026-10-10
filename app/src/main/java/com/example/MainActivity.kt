@@ -198,6 +198,10 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.toggleUserActive(uId, active)
                                             },
+                                            onRemoveUser = { uId ->
+                                                viewModel.onUserActivity()
+                                                viewModel.deleteUser(uId)
+                                            },
                                             onUpdateWalletStatus = { txId, st, reason ->
                                                 viewModel.onUserActivity()
                                                 viewModel.updateWalletTransactionStatus(txId, st, reason)
