@@ -39,6 +39,7 @@ fun AdminMainScreen(
     gatewayPort: Int = 8080,
     gatewayToken: String = "",
     gatewayDeviceId: String = "",
+    autoStartGateway: Boolean = true,
     backupStatusMessage: String?,
     onBack: () -> Unit,
     onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit,
@@ -161,7 +162,7 @@ fun AdminMainScreen(
                     )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)
-                    AdminTab.SETTINGS -> AdminSettingsTab(users, gatewayToken, gatewayDeviceId, onSaveSetting)
+                    AdminTab.SETTINGS -> AdminSettingsTab(users, gatewayToken, gatewayDeviceId, gatewayPort, autoStartGateway, onSaveSetting)
                 }
             }
         }
