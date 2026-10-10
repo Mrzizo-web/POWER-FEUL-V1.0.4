@@ -250,7 +250,10 @@ class MainActivity : ComponentActivity() {
                                             insights = aiInsights,
                                             onAskAi = { q -> viewModel.askAi(q) },
                                             onSaveApiKey = { k -> viewModel.saveGeminiApiKey(k) },
-                                            onSaveSetting = { k, v -> viewModel.saveSystemSetting(k, v) }
+                                            onSaveSetting = { k, v -> viewModel.saveSystemSetting(k, v) },
+                                            onSaveGatewaySettings = { token, deviceId, port, autoStart ->
+                                                viewModel.saveGatewaySettings(token, deviceId, port, autoStart)
+                                            }
                                         )
                                     }
                                 }
