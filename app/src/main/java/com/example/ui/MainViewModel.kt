@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.engine.*
 import com.example.data.local.AppDatabase
+import com.example.data.seed.DatabaseSeeder
 import com.example.data.local.entity.*
 import com.example.domain.model.*
 import com.example.security.*
@@ -48,6 +49,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
 
     init {
+        // Seed the local owner and initial catalog before the login screen is used.
+        // This is local-only and does not contact any cloud service.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                DatabaseSeeder.seedIfNeeded(db)
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            }
+        }
+
         // Real periodic enforcement: the session remains locked until explicit unlock.
         viewModelScope.launch {
             while (true) {
