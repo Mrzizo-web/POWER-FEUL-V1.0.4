@@ -73,6 +73,23 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
  */
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        // Intentionally empty: schema is unchanged between v2 and v3.
+        // Version 3 adds the offline Gateway queue table. Create it for existing v2 installs.
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS gateway_offline_queue (
+                id TEXT NOT NULL PRIMARY KEY,
+                type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                targetEndpoint TEXT NOT NULL,
+                status TEXT NOT NULL,
+                retryCount INTEGER NOT NULL,
+                maxRetries INTEGER NOT NULL,
+                lastAttemptAt INTEGER NOT NULL,
+                nextAttemptAt INTEGER NOT NULL,
+                errorMessage TEXT NOT NULL,
+                createdAt INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
     }
 }
