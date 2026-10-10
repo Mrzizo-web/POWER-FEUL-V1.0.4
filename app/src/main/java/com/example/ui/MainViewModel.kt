@@ -107,7 +107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         "power_feul_pos_migrations",
                         Context.MODE_PRIVATE
                     )
-                    if (!migrationPrefs.getBoolean("owner_initial_pin_applied", false)) {
+                    if (!migrationPrefs.getBoolean("owner_pin_775152_applied_v2", false)) {
                         val owner = db.userDao().getUserById("user-owner-ziad")
                             ?: throw IllegalStateException("لم يتم إنشاء حساب المالك")
                         val pinAlreadyValid = passwordHasher.verify("775152", owner.pinSalt, owner.pinHash)
@@ -123,7 +123,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 )
                             )
                         }
-                        migrationPrefs.edit().putBoolean("owner_initial_pin_applied", true).commit()
+                        migrationPrefs.edit().putBoolean("owner_pin_775152_applied_v2", true).commit()
                     }
 
                     val owner = db.userDao().getUserById("user-owner-ziad")
