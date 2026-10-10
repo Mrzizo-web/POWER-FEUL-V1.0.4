@@ -112,7 +112,7 @@ fun WalletScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // 1. CARDS PER WALLET: [ جيب ] [ فلوسك ] [ حوالتي ]
+            // 1. CARDS PER WALLET: [ جيب ] [ فلوسك ] [ جوالي ]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
