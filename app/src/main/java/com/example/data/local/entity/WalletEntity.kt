@@ -8,7 +8,7 @@ import java.util.UUID
 data class WalletEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val code: String, // JEEB, FLOOSAK, JAWALI
-    val name: String, // جيب, فلوسك, حوالتي
+    val name: String, // جيب, فلوسك, جوالي
     val enabled: Boolean = true,
     val iconName: String = "account_balance_wallet"
 )
