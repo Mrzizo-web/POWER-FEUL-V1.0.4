@@ -68,6 +68,8 @@ class MainActivity : ComponentActivity() {
                     val isGatewayRunning by viewModel.isGatewayRunning.collectAsStateWithLifecycle()
                     val gatewayIp by viewModel.gatewayIp.collectAsStateWithLifecycle()
                     val gatewayPort by viewModel.gatewayPort.collectAsStateWithLifecycle()
+                    val gatewayToken by viewModel.gatewayToken.collectAsStateWithLifecycle()
+                    val gatewayDeviceId by viewModel.gatewayDeviceId.collectAsStateWithLifecycle()
 
                     val showStartShiftDialog by viewModel.showStartShiftDialog.collectAsStateWithLifecycle()
                     val showCloseShiftDialog by viewModel.showCloseShiftDialog.collectAsStateWithLifecycle()
@@ -180,6 +182,8 @@ class MainActivity : ComponentActivity() {
                                             isGatewayRunning = isGatewayRunning,
                                             gatewayIp = gatewayIp,
                                             gatewayPort = gatewayPort,
+                                            gatewayToken = gatewayToken,
+                                            gatewayDeviceId = gatewayDeviceId,
                                             backupStatusMessage = backupStatusMessage,
                                             onBack = {
                                                 viewModel.onUserActivity()
