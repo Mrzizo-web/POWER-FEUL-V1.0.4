@@ -166,6 +166,7 @@ fun AdminEmployeesTab(
     var pin by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var selectedRole by remember { mutableStateOf(UserRole.CASHIER) }
+    var showRoleMenu by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -253,6 +254,25 @@ fun AdminEmployeesTab(
                     OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("اسم المستخدم") }, singleLine = true)
                     OutlinedTextField(value = pin, onValueChange = { pin = it }, label = { Text("رمز PIN") }, singleLine = true)
                     OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("رقم الهاتف") }, singleLine = true)
+                    Box {
+                        TextButton(onClick = { showRoleMenu = true }) {
+                            Text("الصلاحية: ${selectedRole.titleAr}")
+                        }
+                        DropdownMenu(
+                            expanded = showRoleMenu,
+                            onDismissRequest = { showRoleMenu = false }
+                        ) {
+                            UserRole.values().filter { it != UserRole.OWNER }.forEach { role ->
+                                DropdownMenuItem(
+                                    text = { Text(role.titleAr) },
+                                    onClick = {
+                                        selectedRole = role
+                                        showRoleMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
