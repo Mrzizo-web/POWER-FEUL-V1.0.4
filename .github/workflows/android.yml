@@ -2,7 +2,7 @@ name: Android Build and Tests
 
 on:
   push:
-    branches: [ main, gateway-hardening ]
+    branches: [ main, gateway-hardening, release-ready ]
   pull_request:
     branches: [ main ]
 
