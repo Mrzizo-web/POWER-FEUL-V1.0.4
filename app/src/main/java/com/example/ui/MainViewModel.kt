@@ -450,24 +450,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addEmployee(name: String, username: String, pin: String, role: UserRole, phone: String) {
         val user = _currentUser.value ?: return
+        if (user.role != UserRole.OWNER) {
+            snackbarMessage.value = "إضافة المستخدمين متاحة للمالك فقط"
+            return
+        }
+        val cleanName = name.trim()
+        val cleanUsername = username.trim()
+        if (cleanName.isEmpty() || cleanUsername.isEmpty()) {
+            snackbarMessage.value = "أدخل اسم الموظف واسم المستخدم"
+            return
+        }
         if (pin.length !in 4..6 || !pin.all(Char::isDigit)) {
             snackbarMessage.value = "رمز PIN يجب أن يكون من 4 إلى 6 أرقام"
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
+            if (db.userDao().getUserByUsername(cleanUsername) != null) {
+                snackbarMessage.value = "اسم المستخدم مستخدم بالفعل"
+                return@launch
+            }
             val hash = passwordHasher.hash(pin)
             val emp = UserEntity(
-                name = name,
-                username = username,
+                name = cleanName,
+                username = cleanUsername,
                 pinHash = hash.hashHex,
                 pinSalt = hash.saltHex,
                 role = role,
-                phone = phone,
+                phone = phone.trim(),
                 isActive = true
             )
             db.userDao().insertUser(emp)
             db.auditLogDao().insertLog(
-                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة موظف", notes = "إضافة المستخدم $name بصلاحية ${role.name}")
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة موظف", notes = "إضافة المستخدم $cleanName بصلاحية ${role.name}")
             )
             snackbarMessage.value = "تمت إضافة الموظف بنجاح"
         }
@@ -475,12 +489,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleUserActive(userId: String, isActive: Boolean) {
         val user = _currentUser.value ?: return
+        if (user.role != UserRole.OWNER) {
+            snackbarMessage.value = "إدارة المستخدمين متاحة للمالك فقط"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val target = db.userDao().getUserById(userId)
-            if (target != null) {
-                db.userDao().updateUser(target.copy(isActive = isActive))
-                snackbarMessage.value = "تم تحديث حالة المستخدم"
+            if (target == null) return@launch
+            if (target.role == UserRole.OWNER || target.id == user.id) {
+                snackbarMessage.value = "لا يمكن تعطيل حساب المالك"
+                return@launch
             }
+            db.userDao().updateUser(target.copy(isActive = isActive, updatedAt = System.currentTimeMillis()))
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "تغيير حالة مستخدم", notes = "المستخدم ${target.username}: ${if (isActive) "تفعيل" else "تعطيل"}")
+            )
+            snackbarMessage.value = "تم تحديث حالة المستخدم"
+        }
+    }
+
+    fun deleteUser(userId: String) {
+        val user = _currentUser.value ?: return
+        if (user.role != UserRole.OWNER) {
+            snackbarMessage.value = "حذف المستخدمين متاح للمالك فقط"
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val target = db.userDao().getUserById(userId)
+            if (target == null) return@launch
+            if (target.role == UserRole.OWNER || target.id == user.id) {
+                snackbarMessage.value = "لا يمكن حذف حساب المالك"
+                return@launch
+            }
+            db.userDao().deleteUserById(target.id)
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "حذف مستخدم", notes = "تم حذف المستخدم ${target.username}")
+            )
+            snackbarMessage.value = "تم حذف المستخدم"
         }
     }
 
