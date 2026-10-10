@@ -59,7 +59,8 @@ fun AdminMainScreen(
     insights: List<com.example.data.engine.AiInsight> = emptyList(),
     onAskAi: suspend (String) -> String = { "" },
     onSaveApiKey: (String) -> Unit = {},
-    onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> }
+    onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> },
+    onSaveGatewaySettings: (token: String, deviceId: String, port: String, autoStart: Boolean) -> Unit = { _, _, _, _ -> }
 ) {
     var selectedTab by remember { mutableStateOf(AdminTab.PRODUCTS) }
 
@@ -162,7 +163,7 @@ fun AdminMainScreen(
                     )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)
-                    AdminTab.SETTINGS -> AdminSettingsTab(users, gatewayToken, gatewayDeviceId, gatewayPort, autoStartGateway, onSaveSetting)
+                    AdminTab.SETTINGS -> AdminSettingsTab(users, gatewayToken, gatewayDeviceId, gatewayPort, autoStartGateway, onSaveSetting, onSaveGatewaySettings)
                 }
             }
         }
