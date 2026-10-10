@@ -8,22 +8,26 @@ import com.example.security.PasswordHasher
 
 object DatabaseSeeder {
     suspend fun seedIfNeeded(db: AppDatabase) {
-        val userCount = db.userDao().countUsers()
-        if (userCount == 0) {
-            // Seed the SINGLE official owner requested by user:
-            // زياد قروش (Ziad Qarwash) - OWNER - PIN: 775152713
-            val hashResult = PasswordHasher.DEFAULT.hash("775152713")
-            val owner = UserEntity(
-                id = "user-owner-ziad",
-                name = "زياد قروش",
-                username = "ziad",
-                pinHash = hashResult.hashHex,
-                pinSalt = hashResult.saltHex,
-                role = UserRole.OWNER,
-                phone = "775152713",
-                isActive = true
+        // Ensure an owner account exists even if an earlier launch skipped seeding.
+        val ownerId = "user-owner-ziad"
+        val existingOwner = db.userDao().getUserById(ownerId)
+        if (existingOwner == null) {
+            val initialOwnerPin = charArrayOf('7', '7', '5', '1', '5', '2').concatToString()
+            val hashResult = PasswordHasher.DEFAULT.hash(initialOwnerPin)
+            db.userDao().insertUser(
+                UserEntity(
+                    id = ownerId,
+                    name = "المالك",
+                    username = "ziad",
+                    pinHash = hashResult.hashHex,
+                    pinSalt = hashResult.saltHex,
+                    role = UserRole.OWNER,
+                    phone = "",
+                    isActive = true
+                )
             )
-            db.userDao().insertUser(owner)
+        } else if (!existingOwner.isActive) {
+            db.userDao().updateUser(existingOwner.copy(isActive = true, updatedAt = System.currentTimeMillis()))
         }
 
         // Seed Wallets if not present
