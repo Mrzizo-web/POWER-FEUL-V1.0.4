@@ -99,30 +99,38 @@ fun LoginScreen(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(userProfiles) { profile ->
-                        val isSelected = selectedUser?.id == profile.id
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                selectedUser = profile
-                                enteredPin = ""
-                                onClearError()
-                            },
-                            label = {
-                                Text("${profile.name} (${profile.role.titleAr})")
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = Color.White
+                if (userProfiles.isEmpty()) {
+                    Text(
+                        text = errorMessage ?: "جارٍ تهيئة حساب المالك لأول تشغيل...",
+                        color = if (errorMessage.isNullOrEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        fontSize = 13.sp
+                    )
+                } else {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(userProfiles) { profile ->
+                            val isSelected = selectedUser?.id == profile.id
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    selectedUser = profile
+                                    enteredPin = ""
+                                    onClearError()
+                                },
+                                label = {
+                                    Text("${profile.name} (${profile.role.titleAr})")
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = Color.White
+                                )
                             )
-                        )
+                        }
                     }
                 }
 
