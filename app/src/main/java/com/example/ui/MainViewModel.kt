@@ -48,6 +48,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
 
+    val loginErrorMessage = MutableStateFlow<String?>(null)
+
     init {
         // Seed the local owner and initial catalog before the login screen is used.
         // This is local-only and does not contact any cloud service.
@@ -86,7 +88,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val lastCompletedSale = MutableStateFlow<SaleEntity?>(null)
     val snackbarMessage = MutableStateFlow<String?>(null)
-    val loginErrorMessage = MutableStateFlow<String?>(null)
     val backupStatusMessage = MutableStateFlow<String?>(null)
 
     val _cartItems = MutableStateFlow<List<CartItem>>(emptyList())
