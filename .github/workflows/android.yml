@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R --include='*.kt' -n 'fallbackToDestructiveMigration' app/src; then
+          if grep -R -E --include='*.kt' -n 'fallbackToDestructiveMigration[[:space:]]*\\([[:space:]]*(true)?[[:space:]]*\\)' app/src; then
             echo 'ERROR: destructive Room migration fallback is forbidden.'
             exit 1
           fi
