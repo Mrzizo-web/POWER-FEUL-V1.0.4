@@ -932,6 +932,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveGatewaySettings(token: String, deviceId: String, portText: String, autoStart: Boolean) {
+        val cleanToken = token.trim()
+        val cleanDeviceId = deviceId.trim()
+        val port = portText.trim().toIntOrNull()
+        if (cleanToken.isNotEmpty() && cleanToken.length < 32) {
+            snackbarMessage.value = "رمز Gateway يجب أن يتكون من 32 حرفًا على الأقل."
+            return
+        }
+        if ((cleanToken.isEmpty()) != (cleanDeviceId.isEmpty())) {
+            snackbarMessage.value = "أدخل رمز Gateway ومعرّف الجهاز معًا، أو اترك الحقلين فارغين لتعطيل الربط."
+            return
+        }
+        if (port == null || port !in 1..65535) {
+            snackbarMessage.value = "أدخل منفذًا صحيحًا بين 1 و65535."
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val oldPort = db.settingsDao().getSetting("gateway_port")?.toIntOrNull() ?: 8080
+                db.settingsDao().setSetting(CafeteriaSettingEntity("gateway_token", cleanToken))
+                db.settingsDao().setSetting(CafeteriaSettingEntity("gateway_device_id", cleanDeviceId))
+                db.settingsDao().setSetting(CafeteriaSettingEntity("gateway_port", port.toString()))
+                db.settingsDao().setSetting(CafeteriaSettingEntity("auto_start_gateway", autoStart.toString()))
+
+                gatewayToken.value = cleanToken
+                gatewayDeviceId.value = cleanDeviceId
+                gatewayPort.value = port
+                autoStartGateway.value = autoStart
+
+                if (isGatewayRunning.value && oldPort != port) {
+                    withContext(Dispatchers.Main) {
+                        com.example.gateway.GatewayService.restartGateway(getApplication<Application>())
+                    }
+                }
+                snackbarMessage.value = if (cleanToken.isEmpty()) {
+                    "تم حفظ الإعدادات. بوابة الاتصال غير مهيأة حتى تضيف الرمز ومعرّف الجهاز."
+                } else {
+                    "تم حفظ إعدادات بوابة الاتصال."
+                }
+            } catch (error: Exception) {
+                snackbarMessage.value = "فشل حفظ إعدادات البوابة: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            }
+        }
+    }
+
     suspend fun getSystemSetting(key: String): String? = withContext(Dispatchers.IO) {
         db.settingsDao().getSetting(key)
     }
