@@ -363,7 +363,7 @@ fun AdminSettingsTab(
                     Text("معلومات النظام والأمان:", fontWeight = FontWeight.Bold)
                     Text("نظام التشغيل: POWER FEUL POS & SMS GATEWAY 1.0", fontSize = 13.sp)
                     Text("قاعدة البيانات: SQLite / Room (Local-First Zero-Cloud)", fontSize = 13.sp)
-                    Text("المحافظ المدعومة: جيب (JEEB) • فلوسك (FLOOSAK) • حوالتي (HAWALATY)", fontSize = 13.sp)
+                    Text("المحافظ المدعومة: جيب (JEEB) • فلوسك (FLOOSAK) • جوالي (JAWALI)", fontSize = 13.sp)
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text("المستخدمون المصرح لهم بالدخول (${users.size}):", fontWeight = FontWeight.Bold)
                     users.forEach { u ->
