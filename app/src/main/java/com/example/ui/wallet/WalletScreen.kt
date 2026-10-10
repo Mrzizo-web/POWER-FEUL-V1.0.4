@@ -476,9 +476,9 @@ fun TestSmsDialog(
             Button(
                 onClick = {
                     val body = when (selectedWallet) {
-                        "JEEB" -> "تم استلام حوالة بمبلغ $amountText ريال من $senderText رقم العملية $txIdText"
-                        "FLOOSAK" -> "تم إيداع مبلغ $amountText ريال إلى حسابك في محفظة فلوسك من $senderText رقم العملية: $txIdText"
-                        else -> "حوالة واردة بمبلغ $amountText ريال من $senderText رقم الحوالة $txIdText"
+                        "JEEB" -> "اضيف $amountText ريال تحويل مشترك رص:10000ريال من $senderText-777123456"
+                        "FLOOSAK" -> "استلمت حوالة من $senderText بمبلغ $amountText ريال رصيدك 10000 ريال"
+                        else -> "لقد استلمت ريال $amountText كقيمة مشتريات بمرجع $txIdText من $senderText"
                     }
                     onSend(selectedWallet, body)
                 }
