@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -154,9 +155,12 @@ fun AdminShiftsTab(
 fun AdminEmployeesTab(
     users: List<UserEntity>,
     onAddEmployee: (name: String, username: String, pin: String, role: UserRole, phone: String) -> Unit,
-    onToggleActive: (userId: String, active: Boolean) -> Unit
+    onToggleActive: (userId: String, active: Boolean) -> Unit,
+    onRemoveUser: (userId: String) -> Unit = {},
+    canManageUsers: Boolean = true
 ) {
     var showDialog by remember { mutableStateOf(false) }
+    var userPendingRemoval by remember { mutableStateOf<UserEntity?>(null) }
     var name by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
@@ -170,10 +174,12 @@ fun AdminEmployeesTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("الموظفون والمستخدمون (${users.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Button(onClick = { showDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("إضافة موظف")
+            if (canManageUsers) {
+                Button(onClick = { showDialog = true }) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("إضافة موظف")
+                }
             }
         }
 
@@ -194,11 +200,47 @@ fun AdminEmployeesTab(
                             Text(u.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             Text("اسم المستخدم: @${u.username} • الدور: ${u.role.titleAr} • PIN: محمي ومشفّر", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(checked = u.isActive, onCheckedChange = { onToggleActive(u.id, it) })
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(
+                                checked = u.isActive,
+                                enabled = canManageUsers && u.role != UserRole.OWNER,
+                                onCheckedChange = { onToggleActive(u.id, it) }
+                            )
+                            if (canManageUsers && u.role != UserRole.OWNER) {
+                                IconButton(onClick = { userPendingRemoval = u }) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "إزالة المستخدم",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    val pendingRemoval = userPendingRemoval
+    if (pendingRemoval != null) {
+        AlertDialog(
+            onDismissRequest = { userPendingRemoval = null },
+            title = { Text("تأكيد إزالة المستخدم") },
+            text = { Text("هل تريد إزالة المستخدم ${pendingRemoval.name}؟ لا يمكن التراجع عن هذا الإجراء.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onRemoveUser(pendingRemoval.id)
+                        userPendingRemoval = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("إزالة المستخدم") }
+            },
+            dismissButton = {
+                TextButton(onClick = { userPendingRemoval = null }) { Text("إلغاء") }
+            }
+        )
     }
 
     if (showDialog) {
