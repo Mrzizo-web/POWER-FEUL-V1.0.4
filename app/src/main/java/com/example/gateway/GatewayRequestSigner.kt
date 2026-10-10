@@ -20,7 +20,7 @@ object GatewayRequestSigner {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(token.toByteArray(Charsets.UTF_8), "HmacSHA256"))
         return mac.doFinal(canonical.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
     fun verify(
