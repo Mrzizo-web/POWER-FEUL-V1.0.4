@@ -50,43 +50,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
 
     val loginErrorMessage = MutableStateFlow<String?>(null)
+    val isInitializing = MutableStateFlow(true)
+    private val initializationMutex = kotlinx.coroutines.sync.Mutex()
 
     init {
-        // Seed the local owner and initial catalog before the login screen is used.
-        // This is local-only and does not contact any cloud service.
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                DatabaseSeeder.seedIfNeeded(db)
-
-                // Apply the requested initial owner PIN once, including installations
-                // that already had a seeded owner account before this fix.
-                val migrationPrefs = getApplication<Application>().getSharedPreferences(
-                    "power_feul_pos_migrations",
-                    Context.MODE_PRIVATE
-                )
-                if (!migrationPrefs.getBoolean("owner_initial_pin_applied", false)) {
-                    val owner = db.userDao().getUserById("user-owner-ziad")
-                    if (owner != null) {
-                        val initialPin = charArrayOf('7', '7', '5', '1', '5', '2').concatToString()
-                        val credentials = passwordHasher.hash(initialPin)
-                        db.userDao().updateUser(
-                            owner.copy(
-                                pinHash = credentials.hashHex,
-                                pinSalt = credentials.saltHex,
-                                failedAttempts = 0,
-                                lockedUntil = null,
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        )
-                        migrationPrefs.edit().putBoolean("owner_initial_pin_applied", true).commit()
-                    }
-                }
-            } catch (error: Exception) {
-                withContext(Dispatchers.Main) {
-                    loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
-                }
-            }
-        }
+        initializeLocalDatabase()
 
         // Real periodic enforcement: the session remains locked until explicit unlock.
         viewModelScope.launch {
@@ -95,6 +63,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionManager.checkTimeout()
                 }
                 delay(15_000L)
+            }
+        }
+    }
+
+    /** Re-run safe local bootstrap when the login screen cannot find an active user. */
+    fun retryInitialization() {
+        initializeLocalDatabase()
+    }
+
+    private fun initializeLocalDatabase() {
+        viewModelScope.launch(Dispatchers.IO) {
+            initializationMutex.withLock {
+                isInitializing.value = true
+                loginErrorMessage.value = null
+                try {
+                    DatabaseSeeder.seedIfNeeded(db)
+
+                    // Set the requested owner PIN once on existing installations too.
+                    val migrationPrefs = getApplication<Application>().getSharedPreferences(
+                        "power_feul_pos_migrations",
+                        Context.MODE_PRIVATE
+                    )
+                    if (!migrationPrefs.getBoolean("owner_initial_pin_applied", false)) {
+                        val owner = db.userDao().getUserById("user-owner-ziad")
+                            ?: throw IllegalStateException("لم يتم إنشاء حساب المالك")
+                        val pinAlreadyValid = passwordHasher.verify("775152", owner.pinSalt, owner.pinHash)
+                        if (!pinAlreadyValid) {
+                            val credentials = passwordHasher.hash("775152")
+                            db.userDao().updateUser(
+                                owner.copy(
+                                    pinHash = credentials.hashHex,
+                                    pinSalt = credentials.saltHex,
+                                    failedAttempts = 0,
+                                    lockedUntil = null,
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                        migrationPrefs.edit().putBoolean("owner_initial_pin_applied", true).commit()
+                    }
+
+                    val owner = db.userDao().getUserById("user-owner-ziad")
+                        ?: throw IllegalStateException("حساب المالك غير موجود بعد التهيئة")
+                    if (!owner.isActive || owner.role != UserRole.OWNER) {
+                        db.userDao().updateUser(
+                            owner.copy(
+                                role = UserRole.OWNER,
+                                isActive = true,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                } catch (error: Exception) {
+                    loginErrorMessage.value =
+                        "تعذر تهيئة قاعدة البيانات أو حساب المالك: ${error.localizedMessage ?: error.javaClass.simpleName}"
+                } finally {
+                    isInitializing.value = false
+                }
             }
         }
     }
