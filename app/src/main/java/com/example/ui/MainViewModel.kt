@@ -34,10 +34,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val backupRestoreEngine = BackupRestoreEngine(application, db)
     val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope)
 
-    private var gatewayServer: com.example.gateway.GatewayServer? = null
-    val isGatewayRunning = MutableStateFlow(false)
+    val isGatewayRunning = MutableStateFlow(com.example.gateway.GatewayService.isRunning.value)
     val gatewayPort = MutableStateFlow(8080)
     val gatewayIp = MutableStateFlow(com.example.util.NetworkUtils.getLocalIpAddress())
+    val gatewayToken = MutableStateFlow("")
+    val gatewayDeviceId = MutableStateFlow("")
+    val autoStartGateway = MutableStateFlow(true)
 
     val pendingQueue: StateFlow<List<GatewayQueueEntity>> = gatewaySyncEngine.pendingQueue
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -56,6 +58,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         initializeLocalDatabase()
+
+        viewModelScope.launch {
+            com.example.gateway.GatewayService.isRunning.collect { isGatewayRunning.value = it }
+        }
+        viewModelScope.launch {
+            com.example.gateway.GatewayService.activeIp.collect { gatewayIp.value = it }
+        }
+        viewModelScope.launch {
+            com.example.gateway.GatewayService.statusMessage.collect { message ->
+                if (message.isNotBlank()) snackbarMessage.value = message
+            }
+        }
 
         // Real periodic enforcement: the session remains locked until explicit unlock.
         viewModelScope.launch {
@@ -80,6 +94,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 loginErrorMessage.value = null
                 try {
                     DatabaseSeeder.seedIfNeeded(db)
+
+                    gatewayToken.value = db.settingsDao().getSetting("gateway_token").orEmpty()
+                    gatewayDeviceId.value = db.settingsDao().getSetting("gateway_device_id").orEmpty()
+                    gatewayPort.value = db.settingsDao().getSetting("gateway_port")
+                        ?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 8080
+                    autoStartGateway.value = db.settingsDao().getSetting("auto_start_gateway")
+                        ?.toBooleanStrictOrNull() ?: true
 
                     // Set the requested owner PIN once on existing installations too.
                     val migrationPrefs = getApplication<Application>().getSharedPreferences(
@@ -823,22 +844,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleGatewayServer() {
-        if (isGatewayRunning.value) {
-            gatewayServer?.stop()
-            gatewayServer = null
-            isGatewayRunning.value = false
-            snackbarMessage.value = "تم إيقاف خادم بوابة الرسائل"
-        } else {
-            val port = gatewayPort.value
-            gatewayServer = com.example.gateway.GatewayServer(db, walletMatchingEngine, port)
-            val started = gatewayServer?.start() == true
-            isGatewayRunning.value = started
-            gatewayIp.value = com.example.util.NetworkUtils.getLocalIpAddress()
-            if (started) {
-                snackbarMessage.value = "تم تشغيل خادم البوابة على: ${gatewayIp.value}:$port"
+        try {
+            if (isGatewayRunning.value) {
+                com.example.gateway.GatewayService.stopGateway(getApplication<Application>())
             } else {
-                snackbarMessage.value = "فشل تشغيل خادم البوابة على المنفذ $port"
+                com.example.gateway.GatewayService.startGateway(getApplication<Application>())
             }
+        } catch (error: Exception) {
+            snackbarMessage.value = "تعذر تغيير حالة بوابة الرسائل: ${error.localizedMessage ?: error.javaClass.simpleName}"
         }
     }
 
@@ -875,9 +888,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveSystemSetting(key: String, value: String) {
+        val cleanValue = value.trim()
+        when (key) {
+            "gateway_token" -> if (cleanValue.isNotEmpty() && cleanValue.length < 32) {
+                snackbarMessage.value = "رمز Gateway يجب أن يتكون من 32 حرفًا على الأقل، أو اتركه فارغًا لتعطيل الاتصال."
+                return
+            }
+            "gateway_device_id" -> if (cleanValue.length > 128) {
+                snackbarMessage.value = "معرّف الجهاز طويل جدًا."
+                return
+            }
+            "gateway_port" -> if (cleanValue.toIntOrNull()?.let { it in 1..65535 } != true) {
+                snackbarMessage.value = "أدخل منفذًا صحيحًا بين 1 و65535."
+                return
+            }
+            "auto_lock_minutes" -> {
+                // Auto-lock is intentionally fixed at the requested five-minute policy.
+                snackbarMessage.value = "مهلة القفل التلقائي ثابتة على 5 دقائق."
+                return
+            }
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
-            db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity(key, value))
-            snackbarMessage.value = "تم حفظ الإعداد بنجاح"
+            try {
+                db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity(key, cleanValue))
+                when (key) {
+                    "gateway_token" -> gatewayToken.value = cleanValue
+                    "gateway_device_id" -> gatewayDeviceId.value = cleanValue
+                    "gateway_port" -> {
+                        gatewayPort.value = cleanValue.toInt()
+                        if (isGatewayRunning.value) {
+                            withContext(Dispatchers.Main) {
+                                com.example.gateway.GatewayService.restartGateway(getApplication<Application>())
+                            }
+                        }
+                    }
+                    "auto_start_gateway" -> autoStartGateway.value = cleanValue.toBooleanStrictOrNull() ?: false
+                }
+                snackbarMessage.value = "تم حفظ الإعداد بنجاح"
+            } catch (error: Exception) {
+                snackbarMessage.value = "فشل حفظ الإعداد: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            }
         }
     }
 
