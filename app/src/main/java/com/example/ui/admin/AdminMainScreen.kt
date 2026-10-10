@@ -43,6 +43,7 @@ fun AdminMainScreen(
     onVoidSale: (saleId: String, reason: String) -> Unit,
     onAddEmployee: (name: String, username: String, pin: String, role: UserRole, phone: String) -> Unit,
     onToggleActive: (userId: String, active: Boolean) -> Unit,
+    onRemoveUser: (userId: String) -> Unit = {},
     onUpdateWalletStatus: (txId: String, newStatus: WalletTransferStatus, reason: String) -> Unit,
     onReassignShift: (txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) -> Unit = { _, _, _, _, _ -> },
     onToggleGateway: () -> Unit = {},
@@ -149,7 +150,13 @@ fun AdminMainScreen(
                     )
                     AdminTab.AI_ASSISTANT -> AdminAiTab(insights, onAskAi, onSaveApiKey)
                     AdminTab.BACKUP -> AdminBackupTab(onExportSalesCsv, onCreateBackupJson, backupStatusMessage)
-                    AdminTab.EMPLOYEES -> AdminEmployeesTab(users, onAddEmployee, onToggleActive)
+                    AdminTab.EMPLOYEES -> AdminEmployeesTab(
+                        users = users,
+                        onAddEmployee = onAddEmployee,
+                        onToggleActive = onToggleActive,
+                        onRemoveUser = onRemoveUser,
+                        canManageUsers = currentUser.role == UserRole.OWNER
+                    )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)
                     AdminTab.SETTINGS -> AdminSettingsTab(users, onSaveSetting)
