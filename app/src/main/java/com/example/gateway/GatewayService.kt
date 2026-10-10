@@ -165,6 +165,16 @@ class GatewayService : Service() {
         }
     }
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        // Android 15+ applies a time limit to dataSync foreground services.
+        startupJob?.cancel()
+        server?.stop()
+        server = null
+        isRunning.value = false
+        statusMessage.value = "أوقف Android خدمة مزامنة البوابة بعد بلوغ حد التشغيل؛ افتح التطبيق وأعد تشغيلها."
+        stopSelf(startId)
+    }
+
     override fun onDestroy() {
         startupJob?.cancel()
         server?.stop()
