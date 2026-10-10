@@ -2,7 +2,7 @@ name: Android Build and Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, gateway-hardening ]
   pull_request:
     branches: [ main ]
 
@@ -40,6 +40,13 @@ jobs:
         run: gradle testDebugUnitTest
       - name: Build debug APK
         run: gradle assembleDebug
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: power-feul-pos-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
   instrumentation:
     runs-on: ubuntu-latest
