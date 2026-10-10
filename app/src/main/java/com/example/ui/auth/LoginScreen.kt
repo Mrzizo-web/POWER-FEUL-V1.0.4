@@ -30,6 +30,8 @@ fun LoginScreen(
     userProfiles: List<UserProfile>,
     onAuthenticate: (userId: String, pin: String) -> Unit,
     errorMessage: String? = null,
+    isInitializing: Boolean = false,
+    onRetryInitialization: () -> Unit = {},
     onClearError: () -> Unit = {}
 ) {
     var selectedUser by remember { mutableStateOf<UserProfile?>(null) }
@@ -100,11 +102,29 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 if (userProfiles.isEmpty()) {
-                    Text(
-                        text = errorMessage ?: "جارٍ تهيئة حساب المالك لأول تشغيل...",
-                        color = if (errorMessage.isNullOrEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                        fontSize = 13.sp
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (isInitializing) {
+                            CircularProgressIndicator()
+                            Text(
+                                text = "جارٍ تجهيز قاعدة البيانات وحساب المالك...",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp
+                            )
+                        } else {
+                            Text(
+                                text = errorMessage ?: "لم يتم العثور على مستخدم نشط.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 13.sp
+                            )
+                            Button(onClick = onRetryInitialization) {
+                                Text("إعادة تهيئة الحساب")
+                            }
+                        }
+                    }
                 } else {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
