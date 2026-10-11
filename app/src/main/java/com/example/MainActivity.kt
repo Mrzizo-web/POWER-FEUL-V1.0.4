@@ -186,6 +186,30 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.addProduct(name, catId, price, cost)
                                             },
+                                            onToggleProductActive = { productId, active ->
+                                                viewModel.onUserActivity()
+                                                viewModel.toggleProductActive(productId, active)
+                                            },
+                                            onAddRawMaterial = { name, unit, stock, min, cost ->
+                                                viewModel.onUserActivity()
+                                                viewModel.addRawMaterial(name, unit, stock, min, cost)
+                                            },
+                                            onAddStock = { matId, amount ->
+                                                viewModel.onUserActivity()
+                                                viewModel.addRawMaterialStock(matId, amount)
+                                            },
+                                            onAddRecipe = { name, prodId, items, notes ->
+                                                viewModel.onUserActivity()
+                                                viewModel.addRecipe(name, prodId, items, notes)
+                                            },
+                                            onAddCustomer = { name, phone, limit, allowDebt ->
+                                                viewModel.onUserActivity()
+                                                viewModel.addCustomer(name, phone, limit, allowDebt)
+                                            },
+                                            onAddExpense = { title, amount, category, paidTo, notes ->
+                                                viewModel.onUserActivity()
+                                                viewModel.addExpense(title, amount, category, paidTo, notes)
+                                            },
                                             onVoidSale = { saleId, reason ->
                                                 viewModel.onUserActivity()
                                                 viewModel.voidSale(saleId, reason)
@@ -197,6 +221,10 @@ class MainActivity : ComponentActivity() {
                                             onToggleActive = { uId, active ->
                                                 viewModel.onUserActivity()
                                                 viewModel.toggleUserActive(uId, active)
+                                            },
+                                            onRemoveUser = { uId ->
+                                                viewModel.onUserActivity()
+                                                viewModel.deleteUser(uId)
                                             },
                                             onUpdateWalletStatus = { txId, st, reason ->
                                                 viewModel.onUserActivity()

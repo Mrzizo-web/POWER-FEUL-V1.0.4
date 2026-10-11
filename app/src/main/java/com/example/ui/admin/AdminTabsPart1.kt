@@ -21,7 +21,8 @@ import com.example.data.local.entity.*
 fun AdminProductsTab(
     categories: List<CategoryEntity>,
     products: List<ProductEntity>,
-    onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit
+    onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit,
+    onToggleProductActive: (productId: String, isActive: Boolean) -> Unit = { _, _ -> }
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
@@ -56,10 +57,14 @@ fun AdminProductsTab(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(p.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("السعر: ${p.price} ريال • التكلفة: ${p.costPrice} ريال", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("السعر: ${p.price} ريال • التكلفة: ${p.costPrice} ريال • الحالة: ${if (p.isActive) "نشط (معروض للكاشير)" else "معطل"}", fontSize = 12.sp, color = if (p.isActive) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)
                         }
+                        Switch(
+                            checked = p.isActive,
+                            onCheckedChange = { onToggleProductActive(p.id, it) }
+                        )
                     }
                 }
             }
@@ -99,12 +104,32 @@ fun AdminProductsTab(
 @Composable
 fun AdminRecipesTab(
     recipes: List<RecipeEntity>,
-    rawMaterials: List<RawMaterialEntity>
+    rawMaterials: List<RawMaterialEntity>,
+    products: List<ProductEntity> = emptyList(),
+    onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> }
 ) {
+    var showDialog by remember { mutableStateOf(false) }
+    var recipeName by remember { mutableStateOf("") }
+    var selectedProductId by remember { mutableStateOf(products.firstOrNull()?.id ?: "") }
+    var selectedMaterialId by remember { mutableStateOf(rawMaterials.firstOrNull()?.id ?: "") }
+    var materialAmountText by remember { mutableStateOf("30") }
+    var recipeNotes by remember { mutableStateOf("") }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("الوصفات والخلطات (${recipes.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("الوصفات والخلطات (${recipes.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Button(onClick = { showDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("إضافة وصفة")
+            }
+        }
         Spacer(modifier = Modifier.height(12.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
             items(recipes) { r ->
                 Card(
                     shape = RoundedCornerShape(12.dp),
@@ -112,11 +137,74 @@ fun AdminRecipesTab(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(r.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("التكلفة المحسوبة: ${r.calculatedCost} ريال", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Text("التكلفة المحسوبة: ${r.calculatedCost} ريال • ${if (r.notes.isNotEmpty()) r.notes else "وصفة تصنيع نشطة"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
         }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("إضافة وصفة جديدة") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = recipeName,
+                        onValueChange = { recipeName = it },
+                        label = { Text("اسم الوصفة (مثال: بروتين شيك فانيلا)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = materialAmountText,
+                        onValueChange = { materialAmountText = it },
+                        label = { Text("كمية المادة الخام المستهلكة (جرام/مل)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = recipeNotes,
+                        onValueChange = { recipeNotes = it },
+                        label = { Text("طريقة التحضير والتعليمات") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amount = materialAmountText.toDoubleOrNull() ?: 30.0
+                        val chosenMat = rawMaterials.firstOrNull { it.id == selectedMaterialId } ?: rawMaterials.firstOrNull()
+                        val unitCost = chosenMat?.avgCostPerUnit ?: 0.0
+                        val items = if (chosenMat != null) {
+                            listOf(
+                                RecipeItemEntity(
+                                    recipeId = "",
+                                    rawMaterialId = chosenMat.id,
+                                    name = chosenMat.name,
+                                    amount = amount,
+                                    quantity = amount,
+                                    unit = chosenMat.baseUnit,
+                                    costContribution = unitCost * amount
+                                )
+                            )
+                        } else emptyList()
+                        if (recipeName.isNotBlank()) {
+                            onAddRecipe(recipeName, selectedProductId, items, recipeNotes)
+                            showDialog = false
+                            recipeName = ""
+                        }
+                    }
+                ) {
+                    Text("حفظ الوصفة")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) { Text("إلغاء") }
+            }
+        )
     }
 }
 

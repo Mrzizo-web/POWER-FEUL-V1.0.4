@@ -31,7 +31,7 @@ jobs:
             echo 'ERROR: POS must not request SMS permissions; SMS belongs to the independent Gateway.'
             exit 1
           fi
-          if grep -R --include='*.kt' -n 'HAWALATY\|HAWALATY' app/src/main; then
+          if grep -R --include='*.kt' -n 'HAWALATY\|حوالتي' app/src/main; then
             echo 'ERROR: legacy Hawalaty wallet reference found in POS source.'
             exit 1
           fi
@@ -40,6 +40,13 @@ jobs:
         run: gradle testDebugUnitTest
       - name: Build debug APK
         run: gradle assembleDebug
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: power-feul-pos-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
   instrumentation:
     runs-on: ubuntu-latest

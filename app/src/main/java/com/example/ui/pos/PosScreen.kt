@@ -58,7 +58,7 @@ fun PosScreen(
     val filteredProducts = remember(products, selectedCategoryId, searchQuery) {
         products.filter { p ->
             val matchCat = selectedCategoryId == null || p.categoryId == selectedCategoryId
-            val matchQuery = searchQuery.isBlank() || p.name.contains(searchQuery, ignoreCase = true)
+            val matchQuery = searchQuery.isBlank() || p.name.contains(searchQuery, ignoreCase = true) || (p.barcode.isNotBlank() && p.barcode.contains(searchQuery, ignoreCase = true)) || (p.sku.isNotBlank() && p.sku.contains(searchQuery, ignoreCase = true))
             matchCat && matchQuery && p.isActive
         }
     }

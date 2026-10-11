@@ -178,15 +178,24 @@ class GatewayServer(
                 val configuredToken = db.settingsDao().getSetting("gateway_token")?.trim().orEmpty()
                 val configuredDeviceId = db.settingsDao().getSetting("gateway_device_id")?.trim().orEmpty()
                 val suppliedToken = headers["x-gateway-token"].orEmpty()
-                val suppliedDeviceId = headers["x-gateway-device-id"].orEmpty()
-                val eventId = headers["x-gateway-event-id"].orEmpty().ifBlank { headers["idempotency-key"].orEmpty() }
+                val suppliedDeviceId = headers[GatewayRequestSigner.DEVICE_ID_HEADER].orEmpty().ifBlank { headers["x-gateway-device-id"].orEmpty() }
+                val eventId = headers[GatewayRequestSigner.EVENT_ID_HEADER].orEmpty().ifBlank { headers["idempotency-key"].orEmpty() }
+                val timestamp = headers[GatewayRequestSigner.TIMESTAMP_HEADER].orEmpty()
+                val signature = headers[GatewayRequestSigner.SIGNATURE_HEADER].orEmpty()
+
+                val isHmacAuth = signature.isNotBlank() && timestamp.isNotBlank()
+                val isTokenAuth = suppliedToken.isNotBlank() && suppliedToken == configuredToken
 
                 if (configuredToken.isBlank() || configuredDeviceId.isBlank()) {
                     Pair(503, """{"error":"Gateway security is not configured"}""")
-                } else if (suppliedToken != configuredToken || suppliedDeviceId != configuredDeviceId) {
-                    Pair(401, """{"error":"Invalid gateway credentials"}""")
                 } else if (eventId.isBlank()) {
                     Pair(400, """{"error":"X-Gateway-Event-Id or Idempotency-Key is required"}""")
+                } else if (suppliedDeviceId != configuredDeviceId) {
+                    Pair(401, """{"error":"Invalid gateway device ID"}""")
+                } else if (!isHmacAuth && !isTokenAuth) {
+                    Pair(401, """{"error":"Invalid gateway credentials or missing signature"}""")
+                } else if (isHmacAuth && !GatewayRequestSigner.verify(configuredToken, timestamp, eventId, suppliedDeviceId, body, signature)) {
+                    Pair(401, """{"error":"Invalid HMAC signature or expired timestamp"}""")
                 } else {
                     val sender = extractJsonField(body, "sender")
                     val smsBody = extractJsonField(body, "body")

@@ -33,6 +33,9 @@ interface UserDao {
     @Update
     suspend fun updateUser(user: UserEntity)
 
+    @Query("DELETE FROM users WHERE id = :id")
+    suspend fun deleteUserById(id: String): Int
+
     @Query("UPDATE users SET isActive = :isActive, updatedAt = :updatedAt WHERE id = :id")
     suspend fun deactivateUser(id: String, updatedAt: Long = System.currentTimeMillis(), isActive: Boolean = false)
 }

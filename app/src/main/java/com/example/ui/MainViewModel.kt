@@ -1,10 +1,12 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.engine.*
 import com.example.data.local.AppDatabase
+import com.example.data.seed.DatabaseSeeder
 import com.example.data.local.entity.*
 import com.example.domain.model.*
 import com.example.security.*
@@ -48,6 +50,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
 
     init {
+        // Seed the local owner and initial catalog before the login screen is used.
+        // This is local-only and does not contact any cloud service.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                DatabaseSeeder.seedIfNeeded(db)
+
+                // Apply the requested initial owner PIN once, including installations
+                // that already had a seeded owner account before this fix.
+                val migrationPrefs = getApplication<Application>().getSharedPreferences(
+                    "power_feul_pos_migrations",
+                    Context.MODE_PRIVATE
+                )
+                if (!migrationPrefs.getBoolean("owner_initial_pin_applied", false)) {
+                    val owner = db.userDao().getUserById("user-owner-ziad")
+                    if (owner != null) {
+                        val initialPin = charArrayOf('7', '7', '5', '1', '5', '2').concatToString()
+                        val credentials = passwordHasher.hash(initialPin)
+                        db.userDao().updateUser(
+                            owner.copy(
+                                pinHash = credentials.hashHex,
+                                pinSalt = credentials.saltHex,
+                                failedAttempts = 0,
+                                lockedUntil = null,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                        migrationPrefs.edit().putBoolean("owner_initial_pin_applied", true).commit()
+                    }
+                }
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            }
+        }
+
         // Real periodic enforcement: the session remains locked until explicit unlock.
         viewModelScope.launch {
             while (true) {
@@ -70,6 +108,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val showCloseShiftDialog = MutableStateFlow(false)
     val showHandoverDialog = MutableStateFlow(false)
     val showPaymentDialog = MutableStateFlow(false)
+    private val isExecutingSale = java.util.concurrent.atomic.AtomicBoolean(false)
 
     val lastCompletedSale = MutableStateFlow<SaleEntity?>(null)
     val snackbarMessage = MutableStateFlow<String?>(null)
@@ -338,25 +377,140 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             snackbarMessage.value = "يجب فتح شفت أولاً قبل إتمام عمليات البيع"
             return
         }
+        if (!isExecutingSale.compareAndSet(false, true)) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            val res = salesEngine.executeSale(
-                shift = shift,
-                user = user,
-                items = items,
-                paymentMethod = paymentMethod,
-                cashReceived = cashReceived,
-                paymentReference = reference,
-                selectedCustomerId = customerId
-            )
-            if (res is SaleResult.Success) {
-                lastCompletedSale.value = res.sale
-                clearCart()
-                showPaymentDialog.value = false
-                snackbarMessage.value = "تمت عملية البيع بنجاح (فاتورة ${res.invoiceNumber})"
-            } else if (res is SaleResult.Error) {
-                snackbarMessage.value = res.message
+            try {
+                val res = salesEngine.executeSale(
+                    shift = shift,
+                    user = user,
+                    items = items,
+                    paymentMethod = paymentMethod,
+                    cashReceived = cashReceived,
+                    paymentReference = reference,
+                    selectedCustomerId = customerId
+                )
+                if (res is SaleResult.Success) {
+                    lastCompletedSale.value = res.sale
+                    clearCart()
+                    showPaymentDialog.value = false
+                    snackbarMessage.value = "تمت عملية البيع بنجاح (فاتورة ${res.invoiceNumber})"
+                } else if (res is SaleResult.Error) {
+                    snackbarMessage.value = res.message
+                }
+            } finally {
+                isExecutingSale.set(false)
             }
+        }
+    }
+
+    fun toggleProductActive(productId: String, isActive: Boolean) {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val prod = db.productDao().getProductById(productId) ?: return@launch
+            db.productDao().updateProduct(prod.copy(isActive = isActive))
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "تعديل حالة منتج", notes = "تم ${if (isActive) "تفعيل" else "تعطيل"} المنتج ${prod.name}")
+            )
+            snackbarMessage.value = "تم تحديث حالة المنتج"
+        }
+    }
+
+    fun addRawMaterial(name: String, unit: String, initialStock: Double, minStock: Double, costPerUnit: Double) {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val material = RawMaterialEntity(
+                name = name,
+                baseUnit = unit,
+                currentStock = initialStock,
+                minStock = minStock,
+                avgCostPerUnit = costPerUnit,
+                lastPurchasePrice = costPerUnit
+            )
+            db.rawMaterialDao().insertRawMaterial(material)
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة مادة خام", notes = "تمت إضافة المادة الخام $name برصيد $initialStock $unit")
+            )
+            snackbarMessage.value = "تمت إضافة المادة الخام بنجاح"
+        }
+    }
+
+    fun addRawMaterialStock(materialId: String, amount: Double, note: String = "") {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val mat = db.rawMaterialDao().getRawMaterialById(materialId) ?: return@launch
+            inventoryEngine.addRawMaterialStock(
+                materialId = materialId,
+                amount = amount,
+                unit = mat.baseUnit,
+                referenceId = "MANUAL_ADJUST",
+                userId = user.id,
+                userName = user.name,
+                txType = com.example.domain.model.InventoryTxType.PURCHASE,
+                note = if (note.isBlank()) "إضافة مخزون يدوية" else note
+            )
+            snackbarMessage.value = "تم تحديث رصيد المخزون بنجاح"
+        }
+    }
+
+    fun addRecipe(name: String, productId: String, items: List<RecipeItemEntity>, notes: String = "") {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val recipeId = java.util.UUID.randomUUID().toString()
+            val totalCost = items.sumOf { it.costContribution }
+            val recipe = RecipeEntity(
+                id = recipeId,
+                productId = productId,
+                name = name,
+                calculatedCost = totalCost,
+                notes = notes
+            )
+            db.recipeDao().insertRecipe(recipe)
+            val dbItems = items.map { it.copy(recipeId = recipeId) }
+            db.recipeDao().insertRecipeItems(dbItems)
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة وصفة", notes = "تمت إضافة الوصفة $name بتكلفة $totalCost")
+            )
+            snackbarMessage.value = "تم حفظ الوصفة بنجاح"
+        }
+    }
+
+    fun addExpense(title: String, amount: Double, category: String, paidTo: String, notes: String = "") {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val expense = ExpenseEntity(
+                shiftId = currentShift.value?.id ?: "",
+                userId = user.id,
+                userName = user.name,
+                title = title,
+                amount = amount,
+                category = category,
+                paidTo = paidTo,
+                notes = notes
+            )
+            db.expenseDao().insertExpense(expense)
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "تسجيل مصروف", notes = "مصروف $title بقيمة $amount")
+            )
+            snackbarMessage.value = "تم تسجيل المصروف بنجاح"
+        }
+    }
+
+    fun addPurchase(supplierId: String, supplierName: String, invoiceNumber: String, items: List<NewPurchaseItem>, notes: String = "") {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            purchaseEngine.createPurchase(
+                supplierId = supplierId,
+                supplierName = supplierName,
+                invoiceNumber = invoiceNumber,
+                items = items,
+                user = user,
+                notes = notes
+            )
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "تسجيل فاتورة شراء", notes = "فاتورة شراء $invoiceNumber من المورد $supplierName")
+            )
+            snackbarMessage.value = "تم تسجيل فاتورة الشراء وتحديث المخزون بنجاح"
         }
     }
 
@@ -437,24 +591,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addEmployee(name: String, username: String, pin: String, role: UserRole, phone: String) {
         val user = _currentUser.value ?: return
+        if (user.role != UserRole.OWNER) {
+            snackbarMessage.value = "إضافة المستخدمين متاحة للمالك فقط"
+            return
+        }
+        val cleanName = name.trim()
+        val cleanUsername = username.trim()
+        if (cleanName.isEmpty() || cleanUsername.isEmpty()) {
+            snackbarMessage.value = "أدخل اسم الموظف واسم المستخدم"
+            return
+        }
         if (pin.length !in 4..6 || !pin.all(Char::isDigit)) {
             snackbarMessage.value = "رمز PIN يجب أن يكون من 4 إلى 6 أرقام"
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
+            if (db.userDao().getUserByUsername(cleanUsername) != null) {
+                snackbarMessage.value = "اسم المستخدم مستخدم بالفعل"
+                return@launch
+            }
             val hash = passwordHasher.hash(pin)
             val emp = UserEntity(
-                name = name,
-                username = username,
+                name = cleanName,
+                username = cleanUsername,
                 pinHash = hash.hashHex,
                 pinSalt = hash.saltHex,
                 role = role,
-                phone = phone,
+                phone = phone.trim(),
                 isActive = true
             )
             db.userDao().insertUser(emp)
             db.auditLogDao().insertLog(
-                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة موظف", notes = "إضافة المستخدم $name بصلاحية ${role.name}")
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة موظف", notes = "إضافة المستخدم $cleanName بصلاحية ${role.name}")
             )
             snackbarMessage.value = "تمت إضافة الموظف بنجاح"
         }
@@ -462,12 +630,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleUserActive(userId: String, isActive: Boolean) {
         val user = _currentUser.value ?: return
+        if (user.role != UserRole.OWNER) {
+            snackbarMessage.value = "إدارة المستخدمين متاحة للمالك فقط"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val target = db.userDao().getUserById(userId)
-            if (target != null) {
-                db.userDao().updateUser(target.copy(isActive = isActive))
-                snackbarMessage.value = "تم تحديث حالة المستخدم"
+            if (target == null) return@launch
+            if (target.role == UserRole.OWNER || target.id == user.id) {
+                snackbarMessage.value = "لا يمكن تعطيل حساب المالك"
+                return@launch
             }
+            db.userDao().updateUser(target.copy(isActive = isActive, updatedAt = System.currentTimeMillis()))
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "تغيير حالة مستخدم", notes = "المستخدم ${target.username}: ${if (isActive) "تفعيل" else "تعطيل"}")
+            )
+            snackbarMessage.value = "تم تحديث حالة المستخدم"
+        }
+    }
+
+    fun deleteUser(userId: String) {
+        val user = _currentUser.value ?: return
+        if (user.role != UserRole.OWNER) {
+            snackbarMessage.value = "حذف المستخدمين متاح للمالك فقط"
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val target = db.userDao().getUserById(userId)
+            if (target == null) return@launch
+            if (target.role == UserRole.OWNER || target.id == user.id) {
+                snackbarMessage.value = "لا يمكن حذف حساب المالك"
+                return@launch
+            }
+            db.userDao().deleteUserById(target.id)
+            db.auditLogDao().insertLog(
+                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "حذف مستخدم", notes = "تم حذف المستخدم ${target.username}")
+            )
+            snackbarMessage.value = "تم حذف المستخدم"
         }
     }
 

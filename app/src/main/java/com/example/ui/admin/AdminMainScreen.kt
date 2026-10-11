@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -40,9 +42,16 @@ fun AdminMainScreen(
     backupStatusMessage: String?,
     onBack: () -> Unit,
     onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit,
+    onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> },
+    onAddCustomer: (name: String, phone: String, limit: Double, allowDebt: Boolean) -> Unit = { _, _, _, _ -> },
+    onAddExpense: (title: String, amount: Double, category: String, paidTo: String, notes: String) -> Unit = { _, _, _, _, _ -> },
+    onAddRawMaterial: (name: String, unit: String, stock: Double, minStock: Double, cost: Double) -> Unit = { _, _, _, _, _ -> },
+    onAddStock: (materialId: String, amount: Double) -> Unit = { _, _ -> },
+    onToggleProductActive: (productId: String, active: Boolean) -> Unit = { _, _ -> },
     onVoidSale: (saleId: String, reason: String) -> Unit,
     onAddEmployee: (name: String, username: String, pin: String, role: UserRole, phone: String) -> Unit,
     onToggleActive: (userId: String, active: Boolean) -> Unit,
+    onRemoveUser: (userId: String) -> Unit = {},
     onUpdateWalletStatus: (txId: String, newStatus: WalletTransferStatus, reason: String) -> Unit,
     onReassignShift: (txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) -> Unit = { _, _, _, _, _ -> },
     onToggleGateway: () -> Unit = {},
@@ -80,9 +89,17 @@ fun AdminMainScreen(
         ) {
             // SIDEBAR NAVIGATION RAIL / TABS
             NavigationRail(
-                modifier = Modifier.width(160.dp),
+                modifier = Modifier
+                    .width(160.dp)
+                    .fillMaxHeight(),
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                ) {
                 AdminTab.values().forEach { tab ->
                     NavigationRailItem(
                         selected = selectedTab == tab,
@@ -112,6 +129,7 @@ fun AdminMainScreen(
                         }
                     )
                 }
+                }
             }
 
             // MAIN CONTENT PANE
@@ -121,13 +139,13 @@ fun AdminMainScreen(
                     .fillMaxHeight()
             ) {
                 when (selectedTab) {
-                    AdminTab.PRODUCTS -> AdminProductsTab(categories, products, onAddProduct)
-                    AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials)
-                    AdminTab.INVENTORY -> AdminInventoryTab(rawMaterials, { _, _ -> })
+                    AdminTab.PRODUCTS -> AdminProductsTab(categories, products, onAddProduct, onToggleProductActive)
+                    AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials, products, onAddRecipe)
+                    AdminTab.INVENTORY -> AdminInventoryTab(rawMaterials, onAddStock, onAddRawMaterial)
                     AdminTab.SALES -> AdminSalesTab(sales, onVoidSale)
                     AdminTab.PURCHASES -> AdminPurchasesTab(purchases, suppliers)
-                    AdminTab.DEBTS -> AdminDebtsTab(customers)
-                    AdminTab.EXPENSES -> AdminExpensesTab(expenses)
+                    AdminTab.DEBTS -> AdminDebtsTab(customers, onAddCustomer)
+                    AdminTab.EXPENSES -> AdminExpensesTab(expenses, onAddExpense)
                     AdminTab.SHIFTS -> AdminShiftsTab(shifts)
                     AdminTab.WALLETS -> AdminWalletTab(
                         wallets = wallets,
@@ -149,7 +167,13 @@ fun AdminMainScreen(
                     )
                     AdminTab.AI_ASSISTANT -> AdminAiTab(insights, onAskAi, onSaveApiKey)
                     AdminTab.BACKUP -> AdminBackupTab(onExportSalesCsv, onCreateBackupJson, backupStatusMessage)
-                    AdminTab.EMPLOYEES -> AdminEmployeesTab(users, onAddEmployee, onToggleActive)
+                    AdminTab.EMPLOYEES -> AdminEmployeesTab(
+                        users = users,
+                        onAddEmployee = onAddEmployee,
+                        onToggleActive = onToggleActive,
+                        onRemoveUser = onRemoveUser,
+                        canManageUsers = currentUser.role == UserRole.OWNER
+                    )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)
                     AdminTab.SETTINGS -> AdminSettingsTab(users, onSaveSetting)

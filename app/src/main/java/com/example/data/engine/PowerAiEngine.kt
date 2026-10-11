@@ -102,7 +102,7 @@ class PowerAiEngine(private val db: AppDatabase) {
             "حوالات" in q || "جيب" in q || "فلوسك" in q || "محفظة" in q -> {
                 val openShift = db.shiftDao().getCurrentOpenShiftSync()
                 val statusText = if (openShift != null) "الشفت الحالي مفتوح (#${openShift.shiftNumber} - ${openShift.userName})" else "لا يوجد شفت مفتوح حالياً"
-                "نظام الحوالات POWER FEUL يدعم جيب، فلوسك، وحوالتي عبر الرسائل القصيرة SMS مع منع التكرار والربط بالشفتات. $statusText."
+                "نظام الحوالات POWER FEUL يدعم جيب، فلوسك، وجوالي عبر الرسائل القصيرة SMS مع منع التكرار والربط بالشفتات. $statusText."
             }
             else -> "مرحباً زياد، أنا مساعد الذكاء الاصطناعي لنادي Power Home Gym. يمكنك استشارتي في حالة المخزون، حركة المبيعات، تكاليف الوصفات، أو النقر على 'بحث Google' لمعرفة أحدث أسعار المكملات في السوق."
         }
