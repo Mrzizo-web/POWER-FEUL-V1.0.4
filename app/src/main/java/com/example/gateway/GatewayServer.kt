@@ -194,7 +194,7 @@ class GatewayServer(
                     Pair(401, """{"error":"Invalid gateway device ID"}""")
                 } else if (!isHmacAuth && !isTokenAuth) {
                     Pair(401, """{"error":"Invalid gateway credentials or missing signature"}""")
-                } else if (isHmacAuth && !GatewayRequestSigner.verify(configuredToken, timestamp, eventId, suppliedDeviceId, body, signature)) {
+                } else if (isHmacAuth && !GatewayRequestSigner.verify(configuredToken, method, path, timestamp, eventId, suppliedDeviceId, body, signature)) {
                     Pair(401, """{"error":"Invalid HMAC signature or expired timestamp"}""")
                 } else {
                     val sender = extractJsonField(body, "sender")
